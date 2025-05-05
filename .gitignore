@@ -1,0 +1,27 @@
+@"
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+
+# Data files
+*.csv
+*.xlsx
+*.log
+
+# Secrets
+.env
+config.ini
+secrets.json
+"@ | Out-File -FilePath .gitignore -Encoding utf8
