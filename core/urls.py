@@ -25,7 +25,7 @@ urlpatterns = [
 ]
 
 #Configuración del esquema Swagger, Documentación Swagger y Redoc
-!pip install drf-yasg
+pip install drf-yasg
 
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
