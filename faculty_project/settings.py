@@ -22,15 +22,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third party apps
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
-    
+
     # Local apps
     'core',
-    'certificates'
+    'certificates',
 ]
 
 MIDDLEWARE = [
@@ -80,7 +80,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10
+    'PAGE_SIZE': 10,
 }
 
 # Static files (CSS, JavaScript, Images)
@@ -111,4 +111,3 @@ AUTH_USER_MODEL = 'core.CustomUser'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
