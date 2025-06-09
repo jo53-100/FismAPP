@@ -5,7 +5,7 @@ from . import views
 router = DefaultRouter()
 router.register(r'templates', views.CertificateTemplateViewSet, basename='certificate-template')
 router.register(r'courses-history', views.CoursesHistoryViewSet, basename='courses-history')
-router.register(r'certificates|', views.CertificateViewSet, basename='certificate')
+router.register(r'certificates', views.CertificateViewSet, basename='certificate')
 
 urlpatterns = [
     path('', include(router.urls)),

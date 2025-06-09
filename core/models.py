@@ -9,6 +9,7 @@ class CustomUser(AbstractUser):
         ('professor', 'Professor'),
         ('administrator', 'Administrator'),
         ('alumni', 'Alumni'),
+        ('student', 'Student'),
     )
     user_type = models.CharField(max_length=20, choices=USER_TYPES)
 
@@ -31,6 +32,7 @@ class ProfessorProfile(models.Model):
     department = models.CharField(max_length=100)
     office_number = models.CharField(max_length=20)
     research_areas = models.TextField()
+    id_docente = models.CharField(max_length=9, blank=True)
 
 
 class AdministratorProfile(models.Model):

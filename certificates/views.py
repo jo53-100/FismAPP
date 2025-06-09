@@ -122,11 +122,11 @@ class CertificateViewSet(viewsets.ModelViewSet):
         if request.user.is_professor():
             professor = request.user
         else:
-            professor_id = request.data.get('professor_id')
-            if not professor_id:
+            id_docente = request.data.get('id_docente')
+            if not id_docente:
                 return Response({'error': 'Professor ID is required'},
                                 status=status.HTTP_400_BAD_REQUEST)
-            professor = get_object_or_404(CustomUser, id=professor_id, user_type='professor')
+            professor = get_object_or_404(CustomUser, id=id_docente, user_type='professor')
 
         # Get or create default template
         template_id = data.get('template_id')
@@ -208,8 +208,8 @@ class CertificateViewSet(viewsets.ModelViewSet):
     @user_type_required(['administrator'])
     def bulk_generate(self, request):
         """Generate certificates for multiple professors"""
-        professor_ids = request.data.get('professor_ids', [])
-        if not professor_ids:
+        id_docente = request.data.get('id_docente', [])
+        if not id_docente:
             return Response({'error': 'No professor IDs provided'},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -238,9 +238,9 @@ class CertificateViewSet(viewsets.ModelViewSet):
         generated_certificates = []
         errors = []
 
-        for professor_id in professor_ids:
+        for id_docente in id_docente:
             try:
-                professor = CustomUser.objects.get(id=professor_id, user_type='professor')
+                professor = CustomUser.objects.get(id=id_docente, user_type='professor')
 
                 # Generate PDF
                 pdf_content, verification_code = CertificateService.generate_pdf(
@@ -265,7 +265,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
 
             except Exception as e:
                 errors.append({
-                    'professor_id': professor_id,
+                    'id_docente': id_docente,
                     'error': str(e)
                 })
 
