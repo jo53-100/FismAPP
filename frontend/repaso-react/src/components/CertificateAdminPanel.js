@@ -49,7 +49,7 @@ const CertificateAdminPanel = () => {
         },
         body: JSON.stringify({
           template_id: selectedTemplate,
-          professor_ids: selectedProfessors,
+          id_docentes: selectedProfessors,
           destinatario: 'A QUIEN CORRESPONDA',
           incluir_qr: true
         }),
@@ -183,7 +183,7 @@ const CertificateAdminPanel = () => {
                       <ul>
                         {result.errors.map((error, index) => (
                           <li key={index} style={{ color: 'red' }}>
-                            Profesor ID {error.professor_id}: {error.error}
+                            Id docente {error.id_docente}: {error.error}
                           </li>
                         ))}
                       </ul>

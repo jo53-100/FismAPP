@@ -23,7 +23,7 @@ class CertificateTemplate(models.Model):
 
 class GeneratedCertificate(models.Model):
     """Record of generated certificates"""
-    professor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, limit_choices_to={'user_type': 'professor'})
+    professor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, limit_choices_to={'user_type': 'professor'}, null=True, blank=True)
     template = models.ForeignKey(CertificateTemplate, on_delete=models.CASCADE)
     verification_code = models.CharField(max_length=64, unique=True)
     generated_at = models.DateTimeField(auto_now_add=True)
@@ -34,8 +34,12 @@ class GeneratedCertificate(models.Model):
         ordering = ['-generated_at']
 
     def __str__(self):
-        return f"Certificate for {self.professor.get_full_name()} - {self.generated_at}"
-
+        if self.professor:
+            return f"Certificate for {self.professor.get_full_name()} - {self.generated_at}"
+        else:
+            # Get the name from metadata if no user account
+            professor_name = self.metadata.get('professor_name', 'Unknown Professor')
+            return f"Certificate for {professor_name} - {self.generated_at}"
 
 class CoursesHistory(models.Model):
     """Model to store professor's course history data"""

@@ -98,6 +98,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# Site configuration
+SITE_URL = 'http://127.0.0.1:8000'
+
 # Celery Configuration
 CELERY_BROKER_URL = 'redis://localhost:6379'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379'

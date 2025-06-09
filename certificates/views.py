@@ -98,7 +98,7 @@ class CoursesHistoryViewSet(viewsets.ModelViewSet):
 
 class CertificateViewSet(viewsets.ModelViewSet):
     queryset = GeneratedCertificate.objects.all()
-    serializer_class = GeneratedCertificateSerializer
+    serializer_class = GenerateCertificateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -106,8 +106,30 @@ class CertificateViewSet(viewsets.ModelViewSet):
         if user.is_administrator():
             return GeneratedCertificate.objects.all()
         elif user.is_professor():
+            id_docente = self.get_id_docente(user)
+            if id_docente:
+                return GeneratedCertificate.objects.filter(metadata_id_docente=id_docente)
             return GeneratedCertificate.objects.filter(professor=user)
         return GeneratedCertificate.objects.none()
+
+    def get_id_docente(self, user):
+        """Get the professor's id_docente from their profile or course history"""
+        # Try to get from professor profile first
+        try:
+            if hasattr(user, 'professorprofile') and user.professorprofile.id_docente:
+                return user.professorprofile.id_docente
+        except:
+            pass
+
+        # If not in profile, try to find in course history by name
+        course = CoursesHistory.objects.filter(
+            profesor__icontains=user.get_full_name()
+        ).first()
+
+        if course:
+            return course.id_docente
+
+        return None
 
     @action(detail=False, methods=['post'])
     def generate(self, request):
@@ -117,18 +139,50 @@ class CertificateViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
+        id_docente = data.get('id_docente')
 
-        # Get professor
-        if request.user.is_professor():
-            professor = request.user
-        else:
-            id_docente = request.data.get('id_docente')
-            if not id_docente:
-                return Response({'error': 'Professor ID is required'},
-                                status=status.HTTP_400_BAD_REQUEST)
-            professor = get_object_or_404(CustomUser, id=id_docente, user_type='professor')
+        if not id_docente:
+            return Response({'error': 'id_docente is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get or create default template
+        # Verify that courses exist for this id
+        courses = CoursesHistory.objects.filter(id_docente=id_docente)
+        if not courses.exists():
+            return Response({'error': f'Courses not found for id {id_docente}'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get professor name from course history
+        professor_name = courses.first().profesor
+
+        # Try to find matching user account
+        professor_user = None
+        try:
+            name_parts = professor_name.split()
+            if len(name_parts) >= 2:
+                # Last name is always the last two words
+                last_name = " ".join(name_parts[-2:])
+                # First name is everything before the last two words
+                first_name = " ".join(name_parts[:-2])
+
+                professor_user = CustomUser.objects.filter(
+                    first_name__icontains=first_name.strip(),
+                    last_name__icontains=last_name.strip(),
+                    user_type='professor'
+                ).first()
+        except:
+            pass
+            # If no user found, create a virtual professor object for certificate generation
+        if not professor_user:
+            # Create a simple object with the required methods
+            class VirtualProfessor:
+                def __init__(self, name):
+                    self.full_name = name
+                    self.username = id_docente
+
+                def get_full_name(self):
+                    return self.full_name
+
+            professor_user = VirtualProfessor(professor_name)
+
+            # Get or create default template
         template_id = data.get('template_id')
         if template_id:
             template = get_object_or_404(CertificateTemplate, id=template_id)
@@ -141,23 +195,27 @@ class CertificateViewSet(viewsets.ModelViewSet):
             )
 
         try:
+            # Add id_docente to options
+            options = dict(data)
+            options['id_docente'] = id_docente
+
             # Generate PDF
             pdf_content, verification_code = CertificateService.generate_pdf(
-                professor=professor,
+                professor=professor_user,
                 template=template,
-                options=data
+                options=options
             )
 
             # Save certificate record
             certificate = GeneratedCertificate.objects.create(
-                professor=professor,
+                professor=professor_user if hasattr(professor_user, 'id') else None,
                 template=template,
                 verification_code=verification_code,
-                metadata=data
+                metadata=options
             )
 
             # Save PDF file
-            filename = f"certificate_{professor.username}_{verification_code[:8]}.pdf"
+            filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
             certificate.file.save(filename, pdf_content)
 
             # Return certificate info
@@ -204,12 +262,26 @@ class CertificateViewSet(viewsets.ModelViewSet):
                 'message': 'Certificate not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
+    @action(detail=False, methods=['get'])
+    def professors_list(self, request):
+        """Get list of available professors from course history"""
+        professors = CoursesHistory.objects.values('id_docente', 'profesor').distinct().order_by('profesor')
+
+        professor_list = []
+        for prof in professors:
+            professor_list.append({
+                'id_docente': prof['id_docente'],
+                'name': prof['profesor']
+            })
+
+        return Response(professor_list)
+
     @action(detail=False, methods=['post'])
     @user_type_required(['administrator'])
     def bulk_generate(self, request):
         """Generate certificates for multiple professors"""
-        id_docente = request.data.get('id_docente', [])
-        if not id_docente:
+        id_docentes = request.data.get('id_docentes', [])
+        if not id_docentes:
             return Response({'error': 'No professor IDs provided'},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -232,33 +304,58 @@ class CertificateViewSet(viewsets.ModelViewSet):
             'url_verificacion': request.data.get('url_verificacion'),
             'periodos_filtro': request.data.get('periodos_filtro'),
             'periodo_actual': request.data.get('periodo_actual'),
-            'campos': request.data.get('campos', ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont'])
+            'campos': request.data.get('campos',
+                                       ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont'])
         }
 
         generated_certificates = []
         errors = []
 
-        for id_docente in id_docente:
+        for id_docente in id_docentes:
             try:
-                professor = CustomUser.objects.get(id=id_docente, user_type='professor')
+                # Get professor info from course history
+                courses = CoursesHistory.objects.filter(id_docente=id_docente)
+                if not courses.exists():
+                    errors.append({
+                        'id_docente': id_docente,
+                        'error': 'No course history found'
+                    })
+                    continue
+
+                professor_name = courses.first().profesor
+
+                # Create virtual professor
+                class VirtualProfessor:
+                    def __init__(self, name, docente_id):
+                        self.full_name = name
+                        self.username = docente_id
+
+                    def get_full_name(self):
+                        return self.full_name
+
+                professor = VirtualProfessor(professor_name, id_docente)
+
+                # Add id_docente to options
+                current_options = dict(options)
+                current_options['id_docente'] = id_docente
 
                 # Generate PDF
                 pdf_content, verification_code = CertificateService.generate_pdf(
                     professor=professor,
                     template=template,
-                    options=options
+                    options=current_options
                 )
 
                 # Save certificate record
                 certificate = GeneratedCertificate.objects.create(
-                    professor=professor,
+                    professor=None,  # No user account required
                     template=template,
                     verification_code=verification_code,
-                    metadata=options
+                    metadata=current_options
                 )
 
                 # Save PDF file
-                filename = f"certificate_{professor.username}_{verification_code[:8]}.pdf"
+                filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
                 certificate.file.save(filename, pdf_content)
 
                 generated_certificates.append(certificate)
