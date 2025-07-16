@@ -2,9 +2,11 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser
+from django.db import models, transaction
 from django.http import FileResponse
-from django.shortcuts import get_object_or_404
-from core.models import CustomUser
+import pandas as pd
+import logging
 from core.decorators import user_type_required
 from .models import CertificateTemplate, GeneratedCertificate, CoursesHistory
 from .serializers import (
@@ -12,9 +14,14 @@ from .serializers import (
     GeneratedCertificateSerializer,
     CoursesHistorySerializer,
     GenerateCertificateSerializer,
-    VerifyCertificateSerializer
+    VerifyCertificateSerializer,
+    QuickGenerateSerializer,
+    BulkGenerateSerializer
 )
 from .services import CertificateService
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class CertificateTemplateViewSet(viewsets.ModelViewSet):
@@ -50,55 +57,203 @@ class CoursesHistoryViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     @user_type_required(['administrator'])
     def import_from_excel(self, request):
-        """Import courses history from Excel file"""
+        """Enhanced Excel/CSV import specifically for Historia PA format"""
+
         if 'file' not in request.FILES:
             return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
 
-        excel_file = request.FILES['file']
+        uploaded_file = request.FILES['file']
+
+        # Validate file type - support both Excel and CSV
+        if not uploaded_file.name.endswith(('.xlsx', '.xls', '.csv')):
+            return Response({'error': 'File must be Excel (.xlsx, .xls) or CSV (.csv)'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            import pandas as pd
-            df = pd.read_excel(excel_file)
+            # Read file based on type
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file, encoding='utf-8')
+            else:
+                df = pd.read_excel(uploaded_file, sheet_name=0)
 
-            # Validate required columns
-            required_columns = ['ID_Docente', 'Profesor', 'Periodo', 'Materia', 'Clave', 'NRC', 'Fecha_Inicio',
-                                'Fecha_Fin', 'Hr_Cont']
-            missing_columns = [col for col in required_columns if col not in df.columns]
+            # Clean column names - remove spaces and normalize
+            df.columns = df.columns.str.strip()
 
-            if missing_columns:
-                return Response({'error': f'Missing columns: {", ".join(missing_columns)}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+            # Exact mapping for Historia PA.csv format
+            column_mapping = {
+                # Core required fields (map to your existing model fields)
+                'ID_Docente': 'id_docente',
+                'Profesor': 'profesor',
+                'Periodo': 'periodo',
+                'Materia': 'materia',
+                'Clave': 'clave',
+                'NRC': 'nrc',
+                'Fecha_Inicio': 'fecha_inicio',
+                'Fecha_Fin': 'fecha_fin',
+                'Hr_Cont': 'hr_cont',
+                'Listas_cruzadas': 'listas_cruzadas',
 
-            # Import data
+                # Additional fields from Historia PA.csv
+                'Source.Name': 'source_name',
+                'PP': 'pp',
+                'Nivel': 'nivel',
+                'UA': 'ua',
+                'Claves_Programas': 'claves_programas',
+                'Secc': 'secc',
+                'Campus': 'campus',
+                'Tipo_Hr': 'tipo_hr',
+                'Cred': 'cred',
+                'Modo_calif': 'modo_calif',
+                'Hr_Semana': 'hr_semana',
+                'Dias': 'dias',
+                'Hora': 'hora',
+                'Metodo_Asistencia': 'metodo_asistencia',
+                'Salon': 'salon',
+                'Ubicacion': 'ubicacion',
+                'Edo': 'edo',
+                'Cupo': 'cupo',
+                'Insc': 'insc',
+                'Disp': 'disp',
+                'Ligas': 'ligas',
+                'Bloque': 'bloque'
+            }
+
+            # Check which columns are available
+            available_columns = list(df.columns)
+            mapped_fields = {}
+
+            for csv_col, model_field in column_mapping.items():
+                if csv_col in available_columns:
+                    mapped_fields[model_field] = csv_col
+
+            # Required fields for basic functionality
+            required_fields = ['id_docente', 'profesor', 'periodo', 'materia', 'clave', 'nrc',
+                               'fecha_inicio', 'fecha_fin', 'hr_cont']
+
+            missing_required = [field for field in required_fields if field not in mapped_fields]
+
+            if missing_required:
+                return Response({
+                    'error': f'Missing required columns: {missing_required}',
+                    'available_columns': available_columns,
+                    'expected_columns': list(column_mapping.keys())
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            logger.info(f"Processing {len(df)} rows from Historia PA file")
+
+            # Data validation and import
             imported_count = 0
-            for _, row in df.iterrows():
-                CoursesHistory.objects.update_or_create(
-                    id_docente=row['ID_Docente'],
-                    nrc=row['NRC'],
-                    periodo=row['Periodo'],
-                    defaults={
-                        'profesor': row['Profesor'],
-                        'materia': row['Materia'],
-                        'clave': row['Clave'],
-                        'fecha_inicio': row['Fecha_Inicio'],
-                        'fecha_fin': row['Fecha_Fin'],
-                        'hr_cont': row['Hr_Cont']
-                    }
-                )
-                imported_count += 1
+            updated_count = 0
+            errors = []
 
-            return Response({'message': f'Successfully imported {imported_count} records'})
+            with transaction.atomic():
+                for index, row in df.iterrows():
+                    try:
+                        # Prepare data for the model
+                        course_data = {}
+
+                        for model_field, csv_column in mapped_fields.items():
+                            value = row[csv_column]
+
+                            # Handle different data types
+                            if model_field in ['fecha_inicio', 'fecha_fin']:
+                                # Handle date conversion
+                                if pd.isna(value):
+                                    raise ValueError(f"Missing date in {model_field}")
+                                date_val = pd.to_datetime(value, errors='coerce')
+                                if pd.isna(date_val):
+                                    raise ValueError(f"Invalid date format in {model_field}: {value}")
+                                course_data[model_field] = date_val.date()
+
+                            elif model_field in ['hr_cont', 'cred', 'cupo', 'insc', 'disp']:
+                                # Handle integer fields
+                                if pd.isna(value):
+                                    if model_field == 'hr_cont':  # Required field
+                                        raise ValueError(f"Missing required field: {model_field}")
+                                    course_data[model_field] = None
+                                else:
+                                    try:
+                                        course_data[model_field] = int(float(value))
+                                    except (ValueError, TypeError):
+                                        if model_field == 'hr_cont':
+                                            raise ValueError(f"Invalid number format in {model_field}: {value}")
+                                        course_data[model_field] = None
+
+                            elif model_field in ['hr_semana']:
+                                # Handle float fields
+                                if pd.isna(value):
+                                    course_data[model_field] = None
+                                else:
+                                    try:
+                                        course_data[model_field] = float(value)
+                                    except (ValueError, TypeError):
+                                        course_data[model_field] = None
+
+                            else:
+                                # Handle text fields
+                                if pd.isna(value):
+                                    course_data[model_field] = None
+                                else:
+                                    # Convert to string and clean
+                                    str_value = str(value).strip()
+                                    course_data[model_field] = str_value if str_value else None
+
+                        # Validate required fields have values
+                        for req_field in required_fields:
+                            if req_field in course_data and course_data[req_field] is None:
+                                raise ValueError(f"Missing required field: {req_field}")
+
+                        # Create or update record
+                        course, created = CoursesHistory.objects.update_or_create(
+                            id_docente=course_data['id_docente'],
+                            nrc=course_data['nrc'],
+                            periodo=course_data['periodo'],
+                            defaults=course_data
+                        )
+
+                        if created:
+                            imported_count += 1
+                        else:
+                            updated_count += 1
+
+                    except Exception as e:
+                        error_msg = f"Row {index + 2}: {str(e)}"
+                        errors.append(error_msg)
+                        if len(errors) < 10:  # Log first 10 errors in detail
+                            logger.error(error_msg)
+
+            # Prepare response
+            response_data = {
+                'message': 'Import completed',
+                'total_processed': len(df),
+                'imported': imported_count,
+                'updated': updated_count,
+                'errors_count': len(errors),
+                'success_rate': f"{((imported_count + updated_count) / len(df) * 100):.1f}%"
+            }
+
+            if errors:
+                response_data['errors'] = errors[:10]  # Return first 10 errors
+                response_data['warning'] = f'Import completed with {len(errors)} errors'
+                if len(errors) > 10:
+                    response_data['additional_errors'] = f'{len(errors) - 10} more errors not shown'
+
+            logger.info(f"Import completed: {imported_count} new, {updated_count} updated, {len(errors)} errors")
+
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Import failed: {str(e)}")
+            return Response({'error': f'Import failed: {str(e)}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class CertificateViewSet(viewsets.ModelViewSet):
     queryset = GeneratedCertificate.objects.all()
-    serializer_class = GenerateCertificateSerializer
+    serializer_class = GeneratedCertificateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
@@ -108,7 +263,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
         elif user.is_professor():
             id_docente = self.get_id_docente(user)
             if id_docente:
-                return GeneratedCertificate.objects.filter(metadata_id_docente=id_docente)
+                return GeneratedCertificate.objects.filter(metadata__id_docente=id_docente)
             return GeneratedCertificate.objects.filter(professor=user)
         return GeneratedCertificate.objects.none()
 
@@ -133,7 +288,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def generate(self, request):
-        """Generate a new certificate"""
+        """Generate a new certificate using only id_docente"""
         serializer = GenerateCertificateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -141,77 +296,62 @@ class CertificateViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         id_docente = data.get('id_docente')
 
-        if not id_docente:
-            return Response({'error': 'id_docente is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Verify that courses exist for this id
+        # Get courses for this professor
         courses = CoursesHistory.objects.filter(id_docente=id_docente)
         if not courses.exists():
-            return Response({'error': f'Courses not found for id {id_docente}'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({
+                'error': f'No se encontraron cursos para el ID docente: {id_docente}'
+            }, status=status.HTTP_404_NOT_FOUND)
 
         # Get professor name from course history
         professor_name = courses.first().profesor
 
-        # Try to find matching user account
-        professor_user = None
-        try:
-            name_parts = professor_name.split()
-            if len(name_parts) >= 2:
-                # Last name is always the last two words
-                last_name = " ".join(name_parts[-2:])
-                # First name is everything before the last two words
-                first_name = " ".join(name_parts[:-2])
-
-                professor_user = CustomUser.objects.filter(
-                    first_name__icontains=first_name.strip(),
-                    last_name__icontains=last_name.strip(),
-                    user_type='professor'
-                ).first()
-        except:
-            pass
-            # If no user found, create a virtual professor object for certificate generation
-        if not professor_user:
-            # Create a simple object with the required methods
-            class VirtualProfessor:
-                def __init__(self, name):
-                    self.full_name = name
-                    self.username = id_docente
-
-                def get_full_name(self):
-                    return self.full_name
-
-            professor_user = VirtualProfessor(professor_name)
-
-            # Get or create default template
+        # Get template
         template_id = data.get('template_id')
         if template_id:
-            template = get_object_or_404(CertificateTemplate, id=template_id)
+            try:
+                template = CertificateTemplate.objects.get(id=template_id)
+            except CertificateTemplate.DoesNotExist:
+                return Response({
+                    'error': f'Template con ID {template_id} no encontrado'
+                }, status=status.HTTP_404_NOT_FOUND)
         else:
-            template, _ = CertificateTemplate.objects.get_or_create(
-                name="Default Template",
-                defaults={
-                    'description': "Default certificate template"
-                }
-            )
+            template = CertificateTemplate.objects.filter(is_default=True).first()
+            if not template:
+                template = CertificateTemplate.objects.first()
+            if not template:
+                return Response({
+                    'error': 'No hay plantillas de certificado disponibles'
+                }, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            # Add id_docente to options
-            options = dict(data)
-            options['id_docente'] = id_docente
+            # Prepare options for PDF generation
+            options = {
+                'id_docente': id_docente,
+                'destinatario': data.get('destinatario', 'A QUIEN CORRESPONDA'),
+                'periodos_filtro': data.get('periodos_filtro'),
+                'periodo_actual': data.get('periodo_actual'),
+                'incluir_qr': data.get('incluir_qr', True),
+                'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
+            }
 
-            # Generate PDF
+            # Generate PDF using the service method
             pdf_content, verification_code = CertificateService.generate_pdf(
-                professor=professor_user,
+                id_docente=id_docente,
+                courses=courses,
                 template=template,
                 options=options
             )
 
-            # Save certificate record
+            # Save certificate record (no professor user required)
             certificate = GeneratedCertificate.objects.create(
-                professor=professor_user if hasattr(professor_user, 'id') else None,
+                professor=None,  # No user account required
                 template=template,
                 verification_code=verification_code,
-                metadata=options
+                metadata={
+                    **options,
+                    'professor_name': professor_name
+                }
             )
 
             # Save PDF file
@@ -219,13 +359,50 @@ class CertificateViewSet(viewsets.ModelViewSet):
             certificate.file.save(filename, pdf_content)
 
             # Return certificate info
-            return Response(
-                GeneratedCertificateSerializer(certificate).data,
-                status=status.HTTP_201_CREATED
-            )
+            return Response({
+                'id': certificate.id,
+                'verification_code': verification_code,
+                'professor_name': professor_name,
+                'id_docente': id_docente,
+                'template_name': template.name,
+                'file_url': certificate.file.url if certificate.file else None,
+                'generated_at': certificate.generated_at,
+                'message': f'Certificado generado exitosamente para {professor_name}'
+            }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'error': f'Error generando certificado: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def quick_generate(self, request):
+        """Super quick certificate generation with minimal data"""
+        serializer = QuickGenerateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        id_docente = serializer.validated_data['id_docente']
+
+        # Use default options for quick generation
+        generate_data = {
+            'id_docente': id_docente,
+            'destinatario': 'A QUIEN CORRESPONDA',
+            'incluir_qr': True
+        }
+
+        # Create a new request with the expanded data
+        from rest_framework.request import Request
+        from django.http import HttpRequest
+
+        # Create new request object with the data
+        new_request = Request(HttpRequest())
+        new_request._full_data = generate_data
+        new_request.user = request.user
+        new_request.auth = request.auth
+
+        # Call the main generate method
+        return self.generate(new_request)
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
@@ -265,13 +442,18 @@ class CertificateViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def professors_list(self, request):
         """Get list of available professors from course history"""
-        professors = CoursesHistory.objects.values('id_docente', 'profesor').distinct().order_by('profesor')
+        professors = CoursesHistory.objects.values('id_docente', 'profesor').annotate(
+            course_count=models.Count('id'),
+            latest_period=models.Max('periodo')
+        ).distinct().order_by('profesor')
 
         professor_list = []
         for prof in professors:
             professor_list.append({
                 'id_docente': prof['id_docente'],
-                'name': prof['profesor']
+                'name': prof['profesor'],
+                'course_count': prof['course_count'],
+                'latest_period': prof['latest_period']
             })
 
         return Response(professor_list)
@@ -280,32 +462,38 @@ class CertificateViewSet(viewsets.ModelViewSet):
     @user_type_required(['administrator'])
     def bulk_generate(self, request):
         """Generate certificates for multiple professors"""
-        id_docentes = request.data.get('id_docentes', [])
-        if not id_docentes:
-            return Response({'error': 'No professor IDs provided'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        serializer = BulkGenerateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        id_docentes = data.get('docente_ids', [])
 
         # Get template
-        template_id = request.data.get('template_id')
+        template_id = data.get('template_id')
         if template_id:
-            template = get_object_or_404(CertificateTemplate, id=template_id)
+            try:
+                template = CertificateTemplate.objects.get(id=template_id)
+            except CertificateTemplate.DoesNotExist:
+                return Response({
+                    'error': f'Template con ID {template_id} no encontrado'
+                }, status=status.HTTP_404_NOT_FOUND)
         else:
-            template, _ = CertificateTemplate.objects.get_or_create(
-                name="Default Template",
-                defaults={
-                    'description': "Default certificate template"
-                }
-            )
+            template = CertificateTemplate.objects.filter(is_default=True).first()
+            if not template:
+                template = CertificateTemplate.objects.first()
+            if not template:
+                return Response({
+                    'error': 'No hay plantillas de certificado disponibles'
+                }, status=status.HTTP_404_NOT_FOUND)
 
         # Common options
-        options = {
-            'destinatario': request.data.get('destinatario', 'A QUIEN CORRESPONDA'),
-            'incluir_qr': request.data.get('incluir_qr', True),
-            'url_verificacion': request.data.get('url_verificacion'),
-            'periodos_filtro': request.data.get('periodos_filtro'),
-            'periodo_actual': request.data.get('periodo_actual'),
-            'campos': request.data.get('campos',
-                                       ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont'])
+        common_options = {
+            'destinatario': data.get('destinatario', 'A QUIEN CORRESPONDA'),
+            'incluir_qr': True,
+            'periodos_filtro': data.get('periodos_filtro'),
+            'periodo_actual': data.get('periodo_actual'),
+            'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
         }
 
         generated_certificates = []
@@ -318,30 +506,20 @@ class CertificateViewSet(viewsets.ModelViewSet):
                 if not courses.exists():
                     errors.append({
                         'id_docente': id_docente,
-                        'error': 'No course history found'
+                        'error': 'No se encontraron cursos'
                     })
                     continue
 
                 professor_name = courses.first().profesor
 
-                # Create virtual professor
-                class VirtualProfessor:
-                    def __init__(self, name, docente_id):
-                        self.full_name = name
-                        self.username = docente_id
-
-                    def get_full_name(self):
-                        return self.full_name
-
-                professor = VirtualProfessor(professor_name, id_docente)
-
                 # Add id_docente to options
-                current_options = dict(options)
+                current_options = dict(common_options)
                 current_options['id_docente'] = id_docente
 
                 # Generate PDF
                 pdf_content, verification_code = CertificateService.generate_pdf(
-                    professor=professor,
+                    id_docente=id_docente,
+                    courses=courses,
                     template=template,
                     options=current_options
                 )
@@ -351,14 +529,23 @@ class CertificateViewSet(viewsets.ModelViewSet):
                     professor=None,  # No user account required
                     template=template,
                     verification_code=verification_code,
-                    metadata=current_options
+                    metadata={
+                        **current_options,
+                        'professor_name': professor_name
+                    }
                 )
 
                 # Save PDF file
                 filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
                 certificate.file.save(filename, pdf_content)
 
-                generated_certificates.append(certificate)
+                generated_certificates.append({
+                    'id': certificate.id,
+                    'id_docente': id_docente,
+                    'professor_name': professor_name,
+                    'verification_code': verification_code,
+                    'file_url': certificate.file.url if certificate.file else None
+                })
 
             except Exception as e:
                 errors.append({
@@ -368,6 +555,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
 
         return Response({
             'generated': len(generated_certificates),
-            'errors': errors,
-            'certificates': GeneratedCertificateSerializer(generated_certificates, many=True).data
+            'errors': len(errors),
+            'certificates': generated_certificates,
+            'error_details': errors
         }, status=status.HTTP_201_CREATED)

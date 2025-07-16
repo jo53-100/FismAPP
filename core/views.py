@@ -1,4 +1,4 @@
-# views.py
+# core/views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response

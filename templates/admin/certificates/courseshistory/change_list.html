@@ -1,0 +1,26 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    <li>
+        <a href="{% url 'admin:import_course_data' %}" class="addlink">
+            📁 Importar Datos de Cursos
+        </a>
+    </li>
+{% endblock %}
+
+{% block content_title %}
+    {{ block.super }}
+    <div class="import-info" style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; padding: 15px; margin: 15px 0;">
+        <h3 style="margin-top: 0;">📋 Gestión de Datos de Cursos</h3>
+        <p><strong>💡 Tip:</strong> Importa datos desde archivos Excel/CSV con el formato Historia PA.</p>
+        <p><strong>📊 Estadísticas:</strong>
+           Total de profesores: <strong>{{ cl.result_count }}</strong> registros
+        </p>
+        <div style="margin-top: 10px;">
+            <a href="{% url 'admin:import_course_data' %}" class="button">📁 Importar Datos</a>
+            <a href="{% url 'admin:quick_generate_certificate' %}" class="button">⚡ Generar Certificado</a>
+        </div>
+    </div>
+{% endblock %}

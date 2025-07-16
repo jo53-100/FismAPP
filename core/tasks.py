@@ -1,4 +1,4 @@
-# tasks.py
+# core/tasks.py
 from celery import shared_task
 import subprocess
 import os

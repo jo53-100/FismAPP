@@ -1,0 +1,33 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    <li>
+        <a href="{% url 'admin:quick_generate_certificate' %}" class="addlink">
+            ⚡ Generar Certificado Rápido
+        </a>
+    </li>
+{% endblock %}
+
+{% block content_title %}
+    {{ block.super }}
+    <div class="quick-actions" style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; padding: 15px; margin: 15px 0;">
+        <h3 style="margin-top: 0;">🚀 Acciones Rápidas</h3>
+        <p><strong>Generar Certificado:</strong>
+           <a href="{% url 'admin:quick_generate_certificate' %}" class="button">
+               ⚡ Usar solo ID Docente
+           </a>
+        </p>
+        <p><strong>API REST:</strong> También puedes generar certificados via API usando:
+           <code>POST /api/certificates/certificates/generate/</code> con el campo <code>id_docente</code>
+        </p>
+        <div style="margin-top: 10px;">
+            <p><strong>📋 Profesores Disponibles:</strong>
+               <a href="{% url 'admin:certificates_courseshistory_changelist' %}" class="button">
+                   Ver Lista de Profesores
+               </a>
+            </p>
+        </div>
+    </div>
+{% endblock %}

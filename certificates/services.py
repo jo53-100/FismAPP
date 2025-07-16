@@ -34,6 +34,81 @@ class QRCodeFlowable(Flowable):
 
 
 class CertificateService:
+
+    @classmethod
+    def group_courses_by_listas_cruzadas(cls, courses):
+        """
+        Group courses by 'listas_cruzadas' field and combine their names appropriately
+
+        Args:
+            courses: QuerySet of CoursesHistory objects
+
+        Returns:
+            List of dictionaries with grouped course data
+        """
+        from collections import defaultdict
+
+        # Group courses by listas_cruzadas
+        grouped = defaultdict(list)
+
+        for course in courses:
+            # Use listas_cruzadas as key, or course ID if listas_cruzadas is empty
+            key = course.listas_cruzadas if course.listas_cruzadas else f"single_{course.id}"
+            grouped[key].append(course)
+
+        # Process each group
+        processed_courses = []
+
+        for listas_cruzadas_code, course_list in grouped.items():
+            if len(course_list) == 1:
+                # Single course, no grouping needed
+                course = course_list[0]
+                processed_courses.append({
+                    'periodo': course.periodo,
+                    'materia': course.materia,
+                    'clave': course.clave,
+                    'nrc': course.nrc,
+                    'fecha_inicio': course.fecha_inicio,
+                    'fecha_fin': course.fecha_fin,
+                    'hr_cont': course.hr_cont,
+                    'listas_cruzadas': course.listas_cruzadas,
+                    'is_grouped': False
+                })
+            else:
+                # Multiple courses with same listas_cruzadas, need to combine
+                # Get unique subject names
+                unique_materias = list(set(course.materia for course in course_list))
+
+                # Combine subject names
+                if len(unique_materias) == 1:
+                    combined_materia = unique_materias[0]
+                else:
+                    combined_materia = "/".join(unique_materias)
+
+                # Use data from first course as base, but combine specific fields
+                base_course = course_list[0]
+
+                # Combine NRCs
+                combined_nrc = "/".join(course.nrc for course in course_list)
+
+                # Sum hr_cont
+                total_hr_cont = sum(course.hr_cont for course in course_list)
+
+                processed_courses.append({
+                    'periodo': base_course.periodo,
+                    'materia': combined_materia,
+                    'clave': base_course.clave,
+                    'nrc': combined_nrc,
+                    'fecha_inicio': base_course.fecha_inicio,
+                    'fecha_fin': base_course.fecha_fin,
+                    'hr_cont': total_hr_cont,
+                    'listas_cruzadas': base_course.listas_cruzadas,
+                    'is_grouped': True,
+                    'grouped_count': len(course_list)
+                })
+
+        return processed_courses
+
     @staticmethod
     def formatear_periodo(periodo):
         """Convierte el código de periodo a un formato legible."""
@@ -62,45 +137,40 @@ class CertificateService:
         cadena = f"{profesor}_{id_docente}_{fecha}_{uuid.uuid4()}"
         return hashlib.md5(cadena.encode()).hexdigest()
 
-    @staticmethod
-    def generate_pdf(professor, template, options):
+    @classmethod
+    def generate_pdf(cls, id_docente, courses, template, options):
         """
         Genera un certificado PDF para un profesor
 
         Args:
-            professor: Instancia del usuario profesor
-            template: Template de certificado a usar
-            options: Diccionario con opciones de generación
+            id_docente: The professor's ID
+            courses: QuerySet of CoursesHistory objects
+            template: The CertificateTemplate to use
+            options: Dictionary of options for certificate generation
 
         Returns:
             Tupla (content_file, verification_code)
         """
-        # Obtener cursos del profesor
-        id_docente = options.get('id_docente')
-        if not id_docente:
-            # Intentar obtener del perfil del profesor si existe
-            if hasattr(professor, 'professorprofile'):
-                id_docente = professor.professorprofile.id_docente
-            else:
-                raise ValueError("ID de docente no proporcionado")
+        # Obtener datos del profesor de los cursos
+        profesor_data = courses.first()
+        if not profesor_data:
+            raise ValueError("No se encontraron cursos para el profesor")
 
-        # Filtrar cursos
-        cursos = CoursesHistory.objects.filter(id_docente=id_docente)
+        nombre_profesor = profesor_data.profesor
 
         # Aplicar filtros de periodo si existen
         periodos_filtro = options.get('periodos_filtro')
         if periodos_filtro:
-            cursos = cursos.filter(periodo__in=periodos_filtro)
-
-        if not cursos.exists():
-            raise ValueError("No se encontraron cursos para el profesor")
+            filtered_courses = courses.filter(periodo__in=periodos_filtro)
+            if filtered_courses.exists():
+                courses = filtered_courses
 
         # Separar cursos actuales si se especifica
         periodo_actual = options.get('periodo_actual')
         cursos_actuales = None
         if periodo_actual:
-            cursos_actuales = cursos.filter(periodo=periodo_actual)
-            cursos = cursos.exclude(periodo=periodo_actual)
+            cursos_actuales = courses.filter(periodo=periodo_actual)
+            courses = courses.exclude(periodo=periodo_actual)
 
         # Configurar el documento PDF
         from io import BytesIO
@@ -196,10 +266,12 @@ class CertificateService:
         elementos.append(Paragraph(texto_intro, styles['Texto']))
 
         # Nombre del profesor
-        elementos.append(Paragraph(professor.get_full_name(), styles['TextoCentrado']))
+        elementos.append(Paragraph(nombre_profesor, styles['TextoCentrado']))
 
-        # Tabla de cursos impartidos
-        if cursos.exists():
+        # Group courses by listas_cruzadas
+        grouped_courses = cls.group_courses_by_listas_cruzadas(courses)
+
+        if grouped_courses:
             elementos.append(Paragraph("Impartió los siguientes cursos:", styles['Texto']))
 
             # Preparar datos para la tabla
@@ -226,24 +298,24 @@ class CertificateService:
 
             datos_tabla = [encabezados]
 
-            # Agregar filas con datos
-            for curso in cursos:
+            # Agregar filas con datos agrupados
+            for course_data in grouped_courses:
                 fila = []
                 for campo in campos:
                     if campo == 'periodo':
-                        fila.append(CertificateService.formatear_periodo(curso.periodo))
+                        fila.append(cls.formatear_periodo(course_data['periodo']))
                     elif campo == 'materia':
-                        fila.append(curso.materia)
+                        fila.append(course_data['materia'])
                     elif campo == 'clave':
-                        fila.append(curso.clave)
+                        fila.append(course_data['clave'])
                     elif campo == 'nrc':
-                        fila.append(curso.nrc)
+                        fila.append(course_data['nrc'])
                     elif campo == 'fecha_inicio':
-                        fila.append(curso.fecha_inicio.strftime('%d/%m/%Y'))
+                        fila.append(course_data['fecha_inicio'].strftime('%d/%m/%Y'))
                     elif campo == 'fecha_fin':
-                        fila.append(curso.fecha_fin.strftime('%d/%m/%Y'))
+                        fila.append(course_data['fecha_fin'].strftime('%d/%m/%Y'))
                     elif campo == 'hr_cont':
-                        fila.append(str(curso.hr_cont))
+                        fila.append(str(course_data['hr_cont']))
                 datos_tabla.append(fila)
 
             # Crear tabla
@@ -270,7 +342,51 @@ class CertificateService:
             elementos.append(Paragraph("Actualmente imparte los siguientes cursos:", styles['Texto']))
 
             # Similar a la tabla anterior pero con cursos actuales
-            # ... (código similar para la tabla de cursos actuales)
+            campos = options.get('campos',
+                                 ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont'])
+            encabezados = []
+            anchos_columna = []
+
+            # Mapeo de campos a encabezados (mismo que antes)
+            mapeo_campos = {
+                'periodo': ('Periodo', 1.1 * inch),
+                'materia': ('Nombre de la Materia', 2 * inch),
+                'clave': ('Clave', 0.9 * inch),
+                'nrc': ('NRC', 0.7 * inch),
+                'fecha_inicio': ('Fecha Inicio', 1 * inch),
+                'fecha_fin': ('Fecha Fin', 1 * inch),
+                'hr_cont': ('Horas Totales', 0.8 * inch)
+            }
+
+            for campo in campos:
+                if campo in mapeo_campos:
+                    encabezados.append(mapeo_campos[campo][0])
+                    anchos_columna.append(mapeo_campos[campo][1])
+
+            datos_tabla = [encabezados]
+
+            for curso in cursos_actuales:
+                fila = []
+                for campo in campos:
+                    if campo == 'periodo':
+                        fila.append(cls.formatear_periodo(curso.periodo))
+                    elif campo == 'materia':
+                        fila.append(curso.materia)
+                    elif campo == 'clave':
+                        fila.append(curso.clave)
+                    elif campo == 'nrc':
+                        fila.append(curso.nrc)
+                    elif campo == 'fecha_inicio':
+                        fila.append(curso.fecha_inicio.strftime('%d/%m/%Y'))
+                    elif campo == 'fecha_fin':
+                        fila.append(curso.fecha_fin.strftime('%d/%m/%Y'))
+                    elif campo == 'hr_cont':
+                        fila.append(str(curso.hr_cont))
+                datos_tabla.append(fila)
+
+            tabla = Table(datos_tabla, colWidths=anchos_columna)
+            tabla.setStyle(estilo_tabla)  # Usar el mismo estilo de la tabla anterior
+            elementos.append(tabla)
 
         elementos.append(Spacer(1, 0.5 * inch))
 
@@ -300,8 +416,8 @@ class CertificateService:
         elementos.append(Paragraph(template.secretary_title, styles['Firma']))
 
         # Generar código de verificación y QR si se solicita
-        verification_code = CertificateService.generar_codigo_autenticacion(
-            professor.get_full_name(),
+        verification_code = cls.generar_codigo_autenticacion(
+            nombre_profesor,
             fecha_actual,
             id_docente
         )

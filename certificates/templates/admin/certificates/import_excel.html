@@ -1,0 +1,123 @@
+<!-- templates/admin/certificates/import_excel.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}Importar Datos de Excel{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h1>Importar Histórico de Cursos desde Excel</h1>
+
+    <div class="form-row">
+        <div class="help">
+            <p><strong>Instrucciones:</strong></p>
+            <ul>
+                <li>El archivo Excel debe contener las siguientes columnas:</li>
+                <li><code>ID_Docente, Profesor, Periodo, Materia, Clave, NRC, Fecha_Inicio, Fecha_Fin, Hr_Cont, Listas_cruzadas</code></li>
+                <li>Las fechas deben estar en formato de fecha válido</li>
+                <li>Los datos existentes se actualizarán si hay coincidencias</li>
+            </ul>
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-row">
+            <div class="field-box">
+                <label for="excel_file">Archivo Excel:</label>
+                <input id="excel_file" type="file" name="excel_file" accept=".xlsx,.xls" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <input type="submit" value="Importar Datos" class="default">
+            <a href="{% url 'admin:certificates_courseshistory_changelist' %}" class="button">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<div class="module">
+    <h2>Ejemplo de Estructura de Archivo Excel</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID_Docente</th>
+                <th>Profesor</th>
+                <th>Periodo</th>
+                <th>Materia</th>
+                <th>Clave</th>
+                <th>NRC</th>
+                <th>Fecha_Inicio</th>
+                <th>Fecha_Fin</th>
+                <th>Hr_Cont</th>
+                <th>Listas_cruzadas</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>100520538</td>
+                <td>Dr. José Carlos Rosas</td>
+                <td>202525</td>
+                <td>Física Aplicada I</td>
+                <td>FISM001</td>
+                <td>12345</td>
+                <td>2025-01-15</td>
+                <td>2025-05-15</td>
+                <td>80</td>
+                <td>A001</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+<!-- templates/admin/certificates/template_preview.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}Vista Previa - {{ template.name }}{% endblock %}
+
+{% block content %}
+<div class="module">
+    <h1>Vista Previa: {{ template.name }}</h1>
+
+    <div class="form-row">
+        <h2>Información del Template</h2>
+        <table>
+            <tr><th>Nombre:</th><td>{{ template.name }}</td></tr>
+            <tr><th>Tipo de Layout:</th><td>{{ template.get_layout_type_display }}</td></tr>
+            <tr><th>Departamento:</th><td>{{ template.department_name }}</td></tr>
+            <tr><th>Universidad:</th><td>{{ template.university_name }}</td></tr>
+            <tr><th>Secretario:</th><td>{{ template.secretary_name }}</td></tr>
+            <tr><th>Título:</th><td>{{ template.secretary_title }}</td></tr>
+        </table>
+    </div>
+
+    <div class="form-row">
+        <h2>Variables Disponibles</h2>
+        <p>Puedes usar estas variables en los textos del template:</p>
+        <ul>
+            {% for variable in variables %}
+            <li><code>{{ "{" }}{{ variable }}{{ "}" }}</code></li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="form-row">
+        <h2>Datos de Ejemplo para Prueba</h2>
+        <pre>{{ sample_data|pprint }}</pre>
+    </div>
+
+    <div class="form-row">
+        <a href="{% url 'admin:test_certificate' template.id %}" class="button default" target="_blank">
+            🧪 Generar Certificado de Prueba
+        </a>
+        <a href="{% url 'admin:certificates_certificatetemplate_change' template.id %}" class="button">
+            ✏️ Editar Template
+        </a>
+        <a href="{% url 'admin:certificates_certificatetemplate_changelist' %}" class="button">
+            ⬅️ Volver a Lista
+        </a>
+    </div>
+</div>
+{% endblock %}

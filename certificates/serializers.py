@@ -10,7 +10,7 @@ class CertificateTemplateSerializer(serializers.ModelSerializer):
 
 
 class GeneratedCertificateSerializer(serializers.ModelSerializer):
-    professor_name = serializers.CharField(source='professor.get_full_name', read_only=True)
+    professor_name = serializers.SerializerMethodField()
     template_name = serializers.CharField(source='template.name', read_only=True)
     id_docente = serializers.SerializerMethodField()
 
@@ -35,16 +35,16 @@ class CoursesHistorySerializer(serializers.ModelSerializer):
 
 
 class GenerateCertificateSerializer(serializers.Serializer):
-    """Serializer for certificate generation request"""
-    template_id = serializers.IntegerField(
-        required=True,
-        help_text="ID del template a usar",
-        label="Plantilla"
-    )
+    """Simplified serializer for certificate generation using only id_docente"""
     id_docente = serializers.CharField(
         required=True,
-        help_text="ID del docente en el sistema",
-        label='ID docente'
+        help_text="ID del docente en el sistema (requerido)",
+        label='ID Docente'
+    )
+    template_id = serializers.IntegerField(
+        required=False,
+        help_text="ID del template a usar (opcional - usa default si no se especifica)",
+        label="Plantilla"
     )
     destinatario = serializers.CharField(
         default="A QUIEN CORRESPONDA",
@@ -73,6 +73,29 @@ class GenerateCertificateSerializer(serializers.Serializer):
             return [p.strip() for p in value.split(',') if p.strip()]
         return None
 
+    def validate_id_docente(self, value):
+        """Validate that the id_docente exists in course history"""
+        if not CoursesHistory.objects.filter(id_docente=value).exists():
+            raise serializers.ValidationError(
+                f"No se encontraron cursos para el ID docente: {value}"
+            )
+        return value
+
+
+class QuickGenerateSerializer(serializers.Serializer):
+    """Super simple serializer for quick certificate generation"""
+    id_docente = serializers.CharField(
+        help_text="ID del docente",
+        label="ID Docente"
+    )
+
+    def validate_id_docente(self, value):
+        if not CoursesHistory.objects.filter(id_docente=value).exists():
+            raise serializers.ValidationError(
+                f"No se encontraron cursos para el ID docente: {value}"
+            )
+        return value
+
 
 class VerifyCertificateSerializer(serializers.Serializer):
     """Serializer for certificate verification"""
@@ -80,9 +103,11 @@ class VerifyCertificateSerializer(serializers.Serializer):
 
 
 class ProfessorListSerializer(serializers.Serializer):
-    """Serializer for listing available professors"""
+    """Serializer for listing available professors from course history"""
     id_docente = serializers.CharField()
     name = serializers.CharField()
+    course_count = serializers.IntegerField()
+    latest_period = serializers.CharField()
 
 
 class BulkGenerateSerializer(serializers.Serializer):
@@ -94,18 +119,18 @@ class BulkGenerateSerializer(serializers.Serializer):
     template_id = serializers.IntegerField(required=False, help_text="ID del template a usar")
     destinatario = serializers.CharField(default="A QUIEN CORRESPONDA")
     incluir_qr = serializers.BooleanField(default=True)
-    url_verificacion = serializers.URLField(required=False)
     periodos_filtro = serializers.ListField(child=serializers.CharField(), required=False)
     periodo_actual = serializers.CharField(required=False)
-    campos = serializers.ListField(
-        child=serializers.ChoiceField(choices=[
-            ('periodo', 'Periodo'),
-            ('materia', 'Materia'),
-            ('clave', 'Clave'),
-            ('nrc', 'NRC'),
-            ('fecha_inicio', 'Fecha Inicio'),
-            ('fecha_fin', 'Fecha Fin'),
-            ('hr_cont', 'Horas Totales')
-        ]),
-        default=['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
-    )
+
+    def validate_docente_ids(self, value):
+        """Validate that all docente IDs exist"""
+        invalid_ids = []
+        for id_docente in value:
+            if not CoursesHistory.objects.filter(id_docente=id_docente).exists():
+                invalid_ids.append(id_docente)
+
+        if invalid_ids:
+            raise serializers.ValidationError(
+                f"Los siguientes IDs de docente no tienen cursos: {', '.join(invalid_ids)}"
+            )
+        return value
