@@ -1,10 +1,11 @@
+<!-- templates/admin/certificates/courses_history/change_list.html -->
 {% extends "admin/change_list.html" %}
 {% load i18n admin_urls static %}
 
 {% block object-tools-items %}
     {{ block.super }}
     <li>
-        <a href="{% url 'admin:import_course_data' %}" class="addlink">
+        <a href="{% url 'admin:certificates_courseshistory_import' %}" class="addlink">
             📁 Importar Datos de Cursos
         </a>
     </li>
@@ -16,11 +17,20 @@
         <h3 style="margin-top: 0;">📋 Gestión de Datos de Cursos</h3>
         <p><strong>💡 Tip:</strong> Importa datos desde archivos Excel/CSV con el formato Historia PA.</p>
         <p><strong>📊 Estadísticas:</strong>
-           Total de profesores: <strong>{{ cl.result_count }}</strong> registros
+           Total de registros: <strong>{{ cl.result_count }}</strong>
         </p>
         <div style="margin-top: 10px;">
-            <a href="{% url 'admin:import_course_data' %}" class="button">📁 Importar Datos</a>
-            <a href="{% url 'admin:quick_generate_certificate' %}" class="button">⚡ Generar Certificado</a>
+            <a href="{% url 'admin:certificates_courseshistory_import' %}" class="button">📁 Importar Datos</a>
+            <a href="{% url 'admin:certificates_generatedcertificate_quick_generate' %}" class="button">⚡ Generar Certificado</a>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <p><strong>📋 Formatos de Archivo Soportados:</strong></p>
+            <ul style="margin: 5px 0 0 20px; font-size: 12px;">
+                <li><strong>Excel:</strong> .xlsx, .xls</li>
+                <li><strong>CSV:</strong> .csv (UTF-8)</li>
+                <li><strong>Columnas requeridas:</strong> ID_Docente, Profesor, Periodo, Materia, Clave, NRC, Fecha_Inicio, Fecha_Fin, Hr_Cont</li>
+            </ul>
         </div>
     </div>
 {% endblock %}

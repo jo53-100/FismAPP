@@ -1,0 +1,62 @@
+<!-- templates/admin/certificates/generatedcertificate/change_list.html -->
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    <li>
+        <a href="{% url 'admin:certificates_generatedcertificate_quick_generate' %}" class="addlink">
+            ⚡ Generar Certificado Rápido
+        </a>
+    </li>
+    <li>
+        <a href="{% url 'admin:certificates_generatedcertificate_bulk_generate' %}" class="addlink">
+            📦 Generación Masiva
+        </a>
+    </li>
+{% endblock %}
+
+{% block content_title %}
+    {{ block.super }}
+    <div class="quick-actions" style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; padding: 15px; margin: 15px 0;">
+        <h3 style="margin-top: 0;">🚀 Acciones Rápidas</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+                <p><strong>⚡ Generar Individual:</strong></p>
+                <a href="{% url 'admin:certificates_generatedcertificate_quick_generate' %}" class="button" style="display: inline-block; margin-bottom: 5px;">
+                    Solo con ID Docente
+                </a>
+                <p style="font-size: 12px; color: #666; margin: 0;">
+                    Genera un certificado usando únicamente el ID del docente
+                </p>
+            </div>
+            <div>
+                <p><strong>📦 Generación Masiva:</strong></p>
+                <a href="{% url 'admin:certificates_generatedcertificate_bulk_generate' %}" class="button" style="display: inline-block; margin-bottom: 5px;">
+                    Múltiples Certificados
+                </a>
+                <p style="font-size: 12px; color: #666; margin: 0;">
+                    Genera certificados para múltiples profesores a la vez
+                </p>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <p><strong>📋 También disponible vía API REST:</strong></p>
+            <code style="background: #f5f5f5; padding: 2px 5px; border-radius: 3px;">
+                POST /api/certificates/certificates/generate/
+            </code>
+            <p style="font-size: 12px; color: #666; margin: 5px 0 0 0;">
+                Con el campo <code style="background: #f5f5f5; padding: 1px 3px;">id_docente</code> en el body
+            </p>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <p><strong>👥 Gestión de Datos:</strong>
+               <a href="{% url 'admin:certificates_courseshistory_changelist' %}" class="button">
+                   Ver Profesores y Cursos
+               </a>
+            </p>
+        </div>
+    </div>
+{% endblock %}

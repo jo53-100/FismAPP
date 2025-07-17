@@ -1,0 +1,32 @@
+<!-- templates/admin/certificates/certificatetemplate/change_list.html -->
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static %}
+
+{% block object-tools-items %}
+    {{ block.super }}
+    <li>
+        <a href="{% url 'admin:certificates_certificatetemplate_wizard' %}" class="addlink">
+            🧙‍♂️ Asistente de Plantillas
+        </a>
+    </li>
+{% endblock %}
+
+{% block content_title %}
+    {{ block.super }}
+    <div class="template-info" style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 4px; padding: 15px; margin: 15px 0;">
+        <h3 style="margin-top: 0;">🎨 Gestión de Plantillas de Certificados</h3>
+        <p><strong>💡 Tip:</strong> Use el asistente para crear plantillas rápidamente con configuraciones predefinidas.</p>
+        <div style="margin-top: 10px;">
+            <a href="{% url 'admin:certificates_certificatetemplate_wizard' %}" class="button">🧙‍♂️ Crear con Asistente</a>
+            <a href="{% url 'admin:certificates_certificatetemplate_add' %}" class="button">➕ Crear Manual</a>
+        </div>
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">
+            <p><strong>📋 Acciones Rápidas:</strong></p>
+            <ul style="margin: 5px 0 0 20px;">
+                <li>Use el botón "🧪 Generar Prueba" para probar cualquier plantilla</li>
+                <li>Solo puede haber una plantilla por defecto activa</li>
+                <li>Las plantillas inactivas no aparecen en las opciones de generación</li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}

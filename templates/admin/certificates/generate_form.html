@@ -1,0 +1,286 @@
+<<!-- templates/admin/certificates/generate_form.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.quick-generate-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.module {
+    margin-bottom: 20px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.module h2 {
+    background: #417690;
+    color: white;
+    margin: 0;
+    padding: 10px 15px;
+    border-radius: 4px 4px 0 0;
+}
+
+.field-box {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.field-box:last-child {
+    border-bottom: none;
+}
+
+.field-box label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.field-box input[type="text"],
+.field-box select {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.help {
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.submit-row {
+    padding: 15px;
+    background: #f0f0f0;
+    border-top: 1px solid #ddd;
+    text-align: right;
+}
+
+.submit-row .button {
+    margin-left: 10px;
+}
+
+#preview_btn {
+    background-color: #6c757d;
+    color: white;
+}
+
+.professor-info {
+    background: #e8f4f8;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 10px;
+    display: none;
+}
+
+.preview-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 10000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+
+.preview-content {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    max-width: 90%;
+    max-height: 90%;
+    overflow: auto;
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.preview-table th,
+.preview-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.preview-table th {
+    background-color: #f2f2f2;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:certificates_generatedcertificate_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="content-main">
+    <div class="quick-generate-container">
+        <h1>{{ title }}</h1>
+
+        <form method="post" id="generate_form">
+            {% csrf_token %}
+
+            <div class="module">
+                <h2>👨‍🏫 Información del Profesor</h2>
+                <div class="field-box">
+                    <label for="id_id_docente" class="required">ID Docente:</label>
+                    <input type="text" name="id_docente" id="id_id_docente" required
+                           placeholder="Ej: 123456789" list="professors_list">
+                    <datalist id="professors_list">
+                        {% for prof in professors %}
+                        <option value="{{ prof.id_docente }}">{{ prof.profesor }} ({{ prof.id_docente }})</option>
+                        {% endfor %}
+                    </datalist>
+                    <p class="help">Ingrese el ID del docente o seleccione de la lista desplegable</p>
+                    <div id="professor_info" class="professor-info">
+                        <p><strong>Profesor encontrado:</strong> <span id="professor_name"></span></p>
+                        <p><strong>Total de cursos:</strong> <span id="total_courses"></span></p>
+                    </div>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_periodo_especifico">Período Específico (opcional):</label>
+                    <select name="periodo_especifico" id="id_periodo_especifico">
+                        <option value="">-- Todos los períodos --</option>
+                        {% for periodo in available_periods %}
+                        <option value="{{ periodo }}">{{ periodo }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Deje vacío para incluir todos los períodos disponibles</p>
+                </div>
+            </div>
+
+            <div class="module">
+                <h2>📄 Configuración del Certificado</h2>
+                <div class="field-box">
+                    <label for="id_template_id">Plantilla:</label>
+                    <select name="template_id" id="id_template_id">
+                        <option value="">-- Usar plantilla por defecto --</option>
+                        {% for template in templates %}
+                        <option value="{{ template.id }}" {% if template.is_default %}selected{% endif %}>
+                            {{ template.name }} {% if template.is_default %}(Por defecto){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Seleccione la plantilla de certificado a utilizar</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_destinatario">Destinatario:</label>
+                    <input type="text" name="destinatario" id="id_destinatario"
+                           value="A QUIEN CORRESPONDA" placeholder="A QUIEN CORRESPONDA">
+                    <p class="help">A quién se dirige el certificado</p>
+                </div>
+            </div>
+
+            <div class="submit-row">
+                <a href="{% url 'admin:certificates_generatedcertificate_changelist' %}" class="button cancel-link">Cancelar</a>
+                <input type="submit" value="🚀 Generar Certificado" class="default">
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const idDocenteInput = document.getElementById('id_id_docente');
+    const periodoSelect = document.getElementById('id_periodo_especifico');
+    const professorInfo = document.getElementById('professor_info');
+    const form = document.getElementById('generate_form');
+
+    // Function to fetch professor data
+    function fetchProfessorData(idDocente) {
+        if (idDocente.length >= 6) {
+            fetch(`{% url 'admin:certificates_generatedcertificate_get_periods' %}?id_docente=${encodeURIComponent(idDocente)}`, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.periods && data.periods.length > 0) {
+                    // Update periods dropdown
+                    periodoSelect.innerHTML = '<option value="">-- Todos los períodos --</option>';
+                    data.periods.forEach(period => {
+                        const option = document.createElement('option');
+                        option.value = period.codigo;
+                        option.textContent = `${period.descripcion} (${period.cursos_count} cursos)`;
+                        periodoSelect.appendChild(option);
+                    });
+
+                    // Show professor info
+                    const totalCourses = data.periods.reduce((sum, p) => sum + p.cursos_count, 0);
+                    const professorName = data.periods[0] ? 'Encontrado' : 'No encontrado';
+
+                    document.getElementById('professor_name').textContent = professorName;
+                    document.getElementById('total_courses').textContent = totalCourses;
+                    professorInfo.style.display = 'block';
+                } else {
+                    professorInfo.style.display = 'none';
+                    periodoSelect.innerHTML = '<option value="">-- No hay períodos disponibles --</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching professor data:', error);
+                professorInfo.style.display = 'none';
+            });
+        } else {
+            professorInfo.style.display = 'none';
+            periodoSelect.innerHTML = '<option value="">-- Todos los períodos --</option>';
+        }
+    }
+
+    // Listen for ID Docente input changes
+    idDocenteInput.addEventListener('input', function() {
+        const idDocente = this.value.trim();
+        fetchProfessorData(idDocente);
+    });
+
+    // Form validation
+    form.addEventListener('submit', function(e) {
+        const idDocente = document.getElementById('id_id_docente').value.trim();
+        if (!idDocente) {
+            alert('Por favor ingrese un ID Docente.');
+            e.preventDefault();
+            return false;
+        }
+
+        if (idDocente.length < 6) {
+            alert('El ID Docente debe tener al menos 6 caracteres.');
+            e.preventDefault();
+            return false;
+        }
+
+        // Show confirmation
+        const periodo = document.getElementById('id_periodo_especifico').value;
+        const periodoText = periodo ? ` para el período ${periodo}` : ' para todos los períodos';
+
+        if (!confirm(`¿Generar certificado para el ID Docente ${idDocente}${periodoText}?`)) {
+            e.preventDefault();
+            return false;
+        }
+
+        return true;
+    });
+});
+</script>
+{% endblock %}

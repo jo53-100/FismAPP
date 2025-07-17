@@ -1,0 +1,283 @@
+<!-- templates/admin/certificates/template_wizard.html -->
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.wizard-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.module {
+    margin-bottom: 20px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.module h2 {
+    background: #417690;
+    color: white;
+    margin: 0;
+    padding: 10px 15px;
+    border-radius: 4px 4px 0 0;
+}
+
+.field-box {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.field-box:last-child {
+    border-bottom: none;
+}
+
+.field-box label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.field-box input[type="text"],
+.field-box input[type="color"],
+.field-box select,
+.field-box textarea {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.field-box textarea {
+    height: 80px;
+    resize: vertical;
+}
+
+.help {
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.form-row {
+    margin-bottom: 10px;
+}
+
+.layout-preview {
+    margin-top: 10px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: none;
+}
+
+.color-preview {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-main">
+    <div class="wizard-container">
+        <h1>{{ title }}</h1>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="module">
+                <h2>📋 Información Básica</h2>
+                <div class="field-box">
+                    <label for="id_name" class="required">Nombre de la plantilla:</label>
+                    <input type="text" name="name" id="id_name" required placeholder="Ej: Plantilla Moderna 2025">
+                    <p class="help">Nombre descriptivo para identificar esta plantilla</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_layout_type">Tipo de diseño:</label>
+                    <select name="layout_type" id="id_layout_type">
+                        {% for value, label in layout_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Selecciona un diseño base que se ajustará automáticamente</p>
+                    <div id="layout_preview" class="layout-preview">
+                        <p id="layout_description">Selecciona un tipo de diseño para ver la descripción</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="module">
+                <h2>🏛️ Información Institucional</h2>
+                <div class="field-box">
+                    <label for="id_department_name">Nombre del departamento:</label>
+                    <input type="text" name="department_name" id="id_department_name"
+                           value="Facultad de Ciencias Físico Matemáticas">
+                    <p class="help">Nombre completo del departamento o facultad</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_university_name">Nombre de la universidad:</label>
+                    <input type="text" name="university_name" id="id_university_name"
+                           value="Benemérita Universidad Autónoma de Puebla">
+                    <p class="help">Nombre completo de la institución</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_address">Dirección:</label>
+                    <textarea name="address" id="id_address">Av. San Claudio y 18 Sur, edif. FM1
+Ciudad Universitaria, Col. San Manuel, Puebla, Pue. C.P. 72570
+01 (222) 229 55 00 Ext. 7550 y 7552</textarea>
+                    <p class="help">Dirección completa que aparecerá en el encabezado</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_secretary_name">Nombre del secretario:</label>
+                    <input type="text" name="secretary_name" id="id_secretary_name" value="Dr. José Piña">
+                    <p class="help">Nombre completo de quien firma el certificado</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_secretary_title">Título del secretario:</label>
+                    <input type="text" name="secretary_title" id="id_secretary_title" value="Secretario Académico">
+                    <p class="help">Cargo o título de quien firma</p>
+                </div>
+            </div>
+
+            <div class="module">
+                <h2>🎨 Colores y Tipografía</h2>
+                <div class="field-box">
+                    <label for="id_primary_color">Color principal:</label>
+                    <input type="color" name="primary_color" id="id_primary_color" value="#000000">
+                    <span class="color-preview" id="primary_preview"></span>
+                    <p class="help">Color para títulos y elementos principales</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_secondary_color">Color secundario:</label>
+                    <input type="color" name="secondary_color" id="id_secondary_color" value="#666666">
+                    <span class="color-preview" id="secondary_preview"></span>
+                    <p class="help">Color para texto secundario y bordes</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_font_family">Familia de fuente:</label>
+                    <select name="font_family" id="id_font_family">
+                        {% for value, label in font_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Tipografía principal del certificado</p>
+                </div>
+            </div>
+
+            <div class="submit-row">
+                <input type="submit" value="🚀 Crear Plantilla" class="default">
+                <a href="{% url 'admin:certificates_certificatetemplate_changelist' %}" class="button cancel-link">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Layout type descriptions
+    const layoutDescriptions = {
+        'standard': {
+            title: 'Diseño Estándar',
+            description: 'Diseño equilibrado con espaciado tradicional. Ideal para uso general.',
+            features: ['Márgenes: 72pt (1 pulgada)', 'Fuente: 12pt encabezados', 'Espaciado moderado']
+        },
+        'formal': {
+            title: 'Diseño Formal',
+            description: 'Diseño elegante con márgenes amplios y fuentes grandes. Perfecto para ceremonias.',
+            features: ['Márgenes: 90pt (1.25 pulgadas)', 'Fuente: 14pt encabezados', 'Espaciado generoso']
+        },
+        'modern': {
+            title: 'Diseño Moderno',
+            description: 'Diseño contemporáneo con espaciado compacto y estilo actual.',
+            features: ['Márgenes: 60pt (0.83 pulgadas)', 'Fuente: 13pt encabezados', 'Espaciado dinámico']
+        },
+        'minimal': {
+            title: 'Diseño Minimalista',
+            description: 'Diseño limpio con elementos reducidos y márgenes pequeños.',
+            features: ['Márgenes: 50pt (0.69 pulgadas)', 'Fuente: 10pt encabezados', 'Espaciado mínimo']
+        },
+        'custom': {
+            title: 'Diseño Personalizado',
+            description: 'Configuración totalmente personalizable. Podrás ajustar todos los parámetros después.',
+            features: ['Configuración manual', 'Control total', 'Personalización completa']
+        }
+    };
+
+    const layoutSelect = document.getElementById('id_layout_type');
+    const layoutPreview = document.getElementById('layout_preview');
+    const layoutDescription = document.getElementById('layout_description');
+
+    function updateLayoutPreview() {
+        const selectedLayout = layoutSelect.value;
+        const info = layoutDescriptions[selectedLayout];
+
+        if (info) {
+            layoutDescription.innerHTML = `
+                <h4>${info.title}</h4>
+                <p>${info.description}</p>
+                <ul>
+                    ${info.features.map(feature => `<li>${feature}</li>`).join('')}
+                </ul>
+            `;
+            layoutPreview.style.display = 'block';
+        }
+    }
+
+    layoutSelect.addEventListener('change', updateLayoutPreview);
+    updateLayoutPreview(); // Initial load
+
+    // Color preview updates
+    function updateColorPreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+
+        function updateColor() {
+            preview.style.backgroundColor = input.value;
+        }
+
+        input.addEventListener('change', updateColor);
+        input.addEventListener('input', updateColor);
+        updateColor(); // Initial load
+    }
+
+    updateColorPreview('id_primary_color', 'primary_preview');
+    updateColorPreview('id_secondary_color', 'secondary_preview');
+
+    // Form validation
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const name = document.getElementById('id_name').value.trim();
+        if (!name) {
+            alert('Por favor ingrese un nombre para la plantilla.');
+            e.preventDefault();
+            return false;
+        }
+
+        if (name.length < 3) {
+            alert('El nombre de la plantilla debe tener al menos 3 caracteres.');
+            e.preventDefault();
+            return false;
+        }
+
+        return true;
+    });
+});
+</script>
+{% endblock %}

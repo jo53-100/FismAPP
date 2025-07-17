@@ -1,0 +1,246 @@
+<!-- templates/admin/certificates/bulk_generate_form.html -->
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block extrahead %}
+<style>
+.bulk-generate-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.module {
+    margin-bottom: 20px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.module h2 {
+    background: #417690;
+    color: white;
+    margin: 0;
+    padding: 10px 15px;
+    border-radius: 4px 4px 0 0;
+}
+
+.field-box {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+.field-box:last-child {
+    border-bottom: none;
+}
+
+.field-box label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.field-box input[type="text"],
+.field-box select {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.help {
+    color: #666;
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.submit-row {
+    padding: 15px;
+    background: #f0f0f0;
+    border-top: 1px solid #ddd;
+    text-align: right;
+}
+
+.submit-row .button {
+    margin-left: 10px;
+}
+
+.preview-info {
+    background: #e8f4f8;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    padding: 10px;
+    margin-top: 10px;
+    display: none;
+}
+
+.warning-box {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.warning-box h3 {
+    margin-top: 0;
+    color: #856404;
+}
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+&rsaquo; <a href="{% url 'admin:certificates_generatedcertificate_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+&rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="content-main">
+    <div class="bulk-generate-container">
+        <h1>{{ title }}</h1>
+
+        <div class="warning-box">
+            <h3>⚠️ Atención</h3>
+            <p>La generación masiva puede tomar tiempo dependiendo del número de profesores.
+               Se generarán certificados para todos los profesores que tengan cursos en el período seleccionado.</p>
+        </div>
+
+        <form method="post" id="bulk_form">
+            {% csrf_token %}
+
+            <div class="module">
+                <h2>🔍 Filtros de Selección</h2>
+                <div class="field-box">
+                    <label for="id_periodo_filtro">Período (opcional):</label>
+                    <select name="periodo_filtro" id="id_periodo_filtro">
+                        <option value="">-- Todos los períodos --</option>
+                        {% for periodo in available_periods %}
+                        <option value="{{ periodo }}">{{ periodo }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Filtre por período específico o deje vacío para todos los períodos</p>
+                    <div id="preview_info" class="preview-info">
+                        <p><strong>Profesores encontrados:</strong> <span id="professors_count">0</span></p>
+                        <p><strong>Total de certificados a generar:</strong> <span id="certificates_count">0</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="module">
+                <h2>📄 Configuración del Certificado</h2>
+                <div class="field-box">
+                    <label for="id_template_id">Plantilla:</label>
+                    <select name="template_id" id="id_template_id">
+                        <option value="">-- Usar plantilla por defecto --</option>
+                        {% for template in templates %}
+                        <option value="{{ template.id }}" {% if template.is_default %}selected{% endif %}>
+                            {{ template.name }} {% if template.is_default %}(Por defecto){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="help">Seleccione la plantilla de certificado a utilizar</p>
+                </div>
+
+                <div class="field-box">
+                    <label for="id_destinatario">Destinatario:</label>
+                    <input type="text" name="destinatario" id="id_destinatario"
+                           value="A QUIEN CORRESPONDA" placeholder="A QUIEN CORRESPONDA">
+                    <p class="help">A quién se dirigen los certificados</p>
+                </div>
+            </div>
+
+            <div class="submit-row">
+                <a href="{% url 'admin:certificates_generatedcertificate_changelist' %}" class="button cancel-link">Cancelar</a>
+                <button type="button" id="preview_btn" class="button">👁️ Vista Previa</button>
+                <input type="submit" value="📦 Generar Certificados Masivamente" class="default">
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const periodoSelect = document.getElementById('id_periodo_filtro');
+    const previewInfo = document.getElementById('preview_info');
+    const previewBtn = document.getElementById('preview_btn');
+    const form = document.getElementById('bulk_form');
+
+    // Function to fetch preview data
+    function fetchPreviewData(periodo) {
+        if (periodo) {
+            fetch(`{% url 'admin:certificates_generatedcertificate_preview_bulk' %}?periodo=${encodeURIComponent(periodo)}`, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.professors) {
+                    document.getElementById('professors_count').textContent = data.professors.length;
+                    document.getElementById('certificates_count').textContent = data.professors.length;
+                    previewInfo.style.display = 'block';
+                } else {
+                    previewInfo.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching preview data:', error);
+                previewInfo.style.display = 'none';
+            });
+        } else {
+            previewInfo.style.display = 'none';
+        }
+    }
+
+    // Listen for period changes
+    periodoSelect.addEventListener('change', function() {
+        const periodo = this.value;
+        fetchPreviewData(periodo);
+    });
+
+    // Preview button
+    previewBtn.addEventListener('click', function() {
+        const periodo = periodoSelect.value;
+        if (!periodo) {
+            alert('Por favor seleccione un período para ver la vista previa.');
+            return;
+        }
+        fetchPreviewData(periodo);
+    });
+
+    // Form validation
+    form.addEventListener('submit', function(e) {
+        const periodo = periodoSelect.value;
+        const professorsCount = document.getElementById('professors_count').textContent;
+
+        let confirmMessage = '¿Está seguro de que desea generar certificados masivamente?';
+
+        if (periodo) {
+            confirmMessage = `¿Generar certificados para ${professorsCount} profesores del período ${periodo}?`;
+        } else {
+            confirmMessage = '¿Generar certificados para TODOS los profesores de TODOS los períodos?';
+        }
+
+        confirmMessage += '\n\nEsta operación puede tomar varios minutos.';
+
+        if (!confirm(confirmMessage)) {
+            e.preventDefault();
+            return false;
+        }
+
+        // Disable submit button to prevent double submission
+        const submitBtn = form.querySelector('input[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.value = '⏳ Generando...';
+
+        return true;
+    });
+});
+</script>
+{% endblock %}
