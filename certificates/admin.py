@@ -3,11 +3,9 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import path, reverse
 from django.http import JsonResponse, HttpResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect
 from django.contrib import messages
 from django.template.response import TemplateResponse
-from django.core.files.storage import default_storage
-from django.core.files.base import ContentFile
 import pandas as pd
 import logging
 from django.db import transaction
@@ -31,7 +29,7 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
         if obj.id:
             return format_html(
                 '<a href="{}" class="button">🧪 Generar Prueba</a>',
-                reverse('admin:certificates_certificatetemplate_test', args=[obj.id])
+                reverse('admin:test_certificate_template', args=[obj.id])
             )
         return "-"
 
@@ -54,54 +52,9 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('test/<int:template_id>/', self.admin_site.admin_view(self.test_certificate_view),
-                 name='certificates_certificatetemplate_test'),
-            path('wizard/', self.admin_site.admin_view(self.template_wizard_view),
-                 name='certificates_certificatetemplate_wizard'),
+                 name='test_certificate_template'),
         ]
         return custom_urls + urls
-
-    def template_wizard_view(self, request):
-        """Template creation wizard"""
-        if request.method == 'POST':
-            try:
-                # Extract form data
-                data = {
-                    'name': request.POST.get('name'),
-                    'layout_type': request.POST.get('layout_type', 'standard'),
-                    'department_name': request.POST.get('department_name', 'Facultad de Ciencias Físico Matemáticas'),
-                    'university_name': request.POST.get('university_name', 'Benemérita Universidad Autónoma de Puebla'),
-                    'address': request.POST.get('address', ''),
-                    'secretary_name': request.POST.get('secretary_name', 'Dr. José Piña'),
-                    'secretary_title': request.POST.get('secretary_title', 'Secretario Académico'),
-                    'primary_color': request.POST.get('primary_color', '#000000'),
-                    'secondary_color': request.POST.get('secondary_color', '#666666'),
-                    'font_family': request.POST.get('font_family', 'Helvetica'),
-                }
-
-                # Create template
-                template = CertificateTemplate.objects.create(
-                    created_by=request.user,
-                    **data
-                )
-
-                messages.success(request, f'✅ Plantilla "{template.name}" creada exitosamente.')
-                return redirect('admin:certificates_certificatetemplate_changelist')
-
-            except Exception as e:
-                messages.error(request, f'❌ Error creando plantilla: {str(e)}')
-
-        # GET request - show wizard form
-        context = {
-            'title': '🧙‍♂️ Asistente de Creación de Plantillas',
-            'opts': self.model._meta,
-            'layout_choices': CertificateTemplate.LAYOUT_CHOICES,
-            'font_choices': [
-                ('Helvetica', 'Helvetica'),
-                ('Times-Roman', 'Times New Roman'),
-                ('Courier', 'Courier'),
-            ]
-        }
-        return TemplateResponse(request, 'admin/certificates/template_wizard.html', context)
 
     def test_certificate_view(self, request, template_id):
         """Generate a test certificate using real data"""
@@ -135,17 +88,12 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
             # Return PDF directly
             response = HttpResponse(pdf_content.read(), content_type='application/pdf')
             response[
-                'Content-Disposition'] = f'inline; filename="test_certificate_{template.name}_{verification_code[:8]}.pdf"'
+                'Content-Disposition'] = f'inline; filename="testcert_{template.name}_{verification_code[:8]}.pdf"'
             return response
 
         except Exception as e:
             messages.error(request, f"Error generando certificado de prueba: {str(e)}")
             return redirect('admin:certificates_certificatetemplate_changelist')
-
-    def changelist_view(self, request, extra_context=None):
-        extra_context = extra_context or {}
-        extra_context['wizard_url'] = reverse('admin:certificates_certificatetemplate_wizard')
-        return super().changelist_view(request, extra_context)
 
     def save_model(self, request, obj, form, change):
         if not change:  # If creating new template
@@ -166,14 +114,13 @@ class CoursesHistoryAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('import-data/', self.admin_site.admin_view(self.import_data_view),
-                 name='certificates_courseshistory_import'),
+            path('import-data/', self.admin_site.admin_view(self.import_data_view), name='import_course_data'),
         ]
         return custom_urls + urls
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        extra_context['import_url'] = reverse('admin:certificates_courseshistory_import')
+        extra_context['import_url'] = reverse('admin:import_course_data')
         return super().changelist_view(request, extra_context)
 
     def import_data_view(self, request):
@@ -295,14 +242,16 @@ class CoursesHistoryAdmin(admin.ModelAdmin):
                                 logger.error(error_msg)
 
                 # Show results
-                success_message = f"Importación completada: {imported_count} nuevos registros, {updated_count} actualizados"
+                success_message = (f"Importación completada: "
+                                   f"{imported_count} nuevos registros,"
+                                   f" {updated_count} actualizados")
                 if errors:
                     success_message += f", {len(errors)} errores"
                     if len(errors) <= 5:
                         for error in errors:
                             messages.warning(request, error)
                     else:
-                        messages.warning(request, f"Se encontraron {len(errors)} errores. Revise los logs para más detalles.")
+                        messages.warning(request, f"Hay {len(errors)} errores. Revise los logs para más detalles.")
 
                 messages.success(request, success_message)
 
@@ -378,10 +327,11 @@ class CoursesHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(GeneratedCertificate)
 class GeneratedCertificateAdmin(admin.ModelAdmin):
-    list_display = ('id', 'get_professor_name', 'get_id_docente', 'template', 'verification_code_short',
-                    'get_period_info', 'generated_at', 'download_link')
+    list_display = ('id', 'get_professor_name', 'get_id_docente', 'template',
+                    'verification_code_short', 'generated_at', 'download_link')
     list_filter = ('template', 'generated_at')
-    search_fields = ('verification_code', 'metadata__professor_name', 'metadata__id_docente')
+    search_fields = ('verification_code', 'metadata__professor_name',
+                     'metadata__id_docente')
     readonly_fields = ('id', 'verification_code', 'generated_at', 'metadata_display')
     actions = ['regenerate_certificates']
 
@@ -389,105 +339,274 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('quick-generate/', self.admin_site.admin_view(self.quick_generate_view),
-                 name='certificates_generatedcertificate_quick_generate'),
-            path('bulk-generate/', self.admin_site.admin_view(self.bulk_generate_view),
-                 name='certificates_generatedcertificate_bulk_generate'),
-            path('get-periods/', self.admin_site.admin_view(self.get_periods_ajax),
-                 name='certificates_generatedcertificate_get_periods'),
-            path('preview-bulk/', self.admin_site.admin_view(self.preview_bulk_ajax),
-                 name='certificates_generatedcertificate_preview_bulk'),
+                 name='quick_generate_certificate'),
         ]
         return custom_urls + urls
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        extra_context['quick_generate_url'] = reverse('admin:certificates_generatedcertificate_quick_generate')
-        extra_context['bulk_generate_url'] = reverse('admin:certificates_generatedcertificate_bulk_generate')
+        extra_context['quick_generate_url'] = reverse('admin:quick_generate_certificate')
         return super().changelist_view(request, extra_context)
 
-    def get_periods_ajax(self, request):
-        """AJAX endpoint to get periods for a professor"""
-        id_docente = request.GET.get('id_docente')
-        if not id_docente:
-            return JsonResponse({'error': 'id_docente required'})
-
-        from .services import CertificateService
-        periods = CoursesHistory.objects.filter(
-            id_docente=id_docente
-        ).values_list('periodo', flat=True).distinct().order_by('-periodo')
-
-        formatted_periods = []
-        for periodo in periods:
-            formatted_periods.append({
-                'codigo': periodo,
-                'descripcion': CertificateService.formatear_periodo(periodo),
-                'cursos_count': CoursesHistory.objects.filter(
-                    id_docente=id_docente, periodo=periodo
-                ).count()
-            })
-
-        return JsonResponse({'periods': formatted_periods})
-
-    def preview_bulk_ajax(self, request):
-        """AJAX endpoint for bulk generation preview"""
-        periodo = request.GET.get('periodo')
-        if not periodo:
-            return JsonResponse({'error': 'periodo required'})
-
-        from django.db import models
-        professors = CoursesHistory.objects.filter(
-            periodo=periodo
-        ).values('id_docente', 'profesor').annotate(
-            courses_count=models.Count('id')
-        ).distinct().order_by('profesor')
-
-        return JsonResponse({'professors': list(professors)})
-
     def quick_generate_view(self, request):
-        """Enhanced quick certificate generation form"""
+        """Enhanced certificate generation form with single/bulk modes"""
         if request.method == 'POST':
-            id_docente = request.POST.get('id_docente')
+            generation_mode = request.POST.get('generation_mode', 'single')
             template_id = request.POST.get('template_id')
             destinatario = request.POST.get('destinatario', 'A QUIEN CORRESPONDA')
-            periodo_especifico = request.POST.get('periodo_especifico')
 
-            if not id_docente:
-                messages.error(request, 'ID Docente es requerido.')
+            # Get period filters
+            period_type = request.POST.get('period_type', 'all')
+            periods_filter = None
+
+            if period_type == 'list':
+                periods_list = request.POST.get('periods_list', '')
+                if periods_list:
+                    periods_filter = [p.strip() for p in periods_list.split(',') if p.strip()]
+
+            elif period_type == 'range':
+                period_start = request.POST.get('period_start', '')
+                period_end = request.POST.get('period_end', '')
+
+                if period_start and period_end:
+                    # Generate period list from range
+                    periods_filter = self.generate_period_range(period_start, period_end)
+
+            # Get current period if specified
+            periodo_actual = request.POST.get('periodo_actual', '')
+
+            # Get template
+            if template_id:
+                try:
+                    template = CertificateTemplate.objects.get(id=template_id)
+                except CertificateTemplate.DoesNotExist:
+                    messages.error(request, 'Plantilla no encontrada.')
+                    return redirect('admin:certificates_generatedcertificate_changelist')
+            else:
+                template = CertificateTemplate.objects.filter(is_default=True).first()
+                if not template:
+                    template = CertificateTemplate.objects.first()
+
+            if not template:
+                messages.error(request, 'No hay plantillas de certificado disponibles.')
                 return redirect('admin:certificates_generatedcertificate_changelist')
 
-            try:
-                # Verify courses exist
-                courses = CoursesHistory.objects.filter(id_docente=id_docente)
-                if not courses.exists():
-                    messages.error(request, f'No se encontraron cursos para el ID docente: {id_docente}')
-                    return redirect('admin:certificates_generatedcertificate_changelist')
+            # Process based on mode
+            if generation_mode == 'single':
+                # Single certificate generation
+                id_docente = request.POST.get('id_docente')
 
-                # Apply period filter if specified
-                if periodo_especifico:
-                    filtered_courses = courses.filter(periodo=periodo_especifico)
-                    if not filtered_courses.exists():
-                        messages.error(request, f'No se encontraron cursos para el período: {periodo_especifico}')
-                        return redirect('admin:certificates_generatedcertificate_changelist')
+                if not id_docente:
+                    messages.error(request, 'ID Docente es requerido.')
+                    return redirect('admin:quick_generate_certificate')
+
+                result = self.generate_single_certificate(
+                    id_docente=id_docente,
+                    template=template,
+                    destinatario=destinatario,
+                    periods_filter=periods_filter,
+                    periodo_actual=periodo_actual
+                )
+
+                if result['success']:
+                    messages.success(request, result['message'])
+                else:
+                    messages.error(request, result['message'])
+
+            else:  # bulk mode
+                # Bulk certificate generation
+                selected_professors = request.POST.get('selected_professors', '')
+
+                if not selected_professors:
+                    messages.error(request, 'No se seleccionaron profesores.')
+                    return redirect('admin:quick_generate_certificate')
+
+                id_docentes = [id.strip() for id in selected_professors.split(',') if id.strip()]
+
+                results = self.generate_bulk_certificates(
+                    id_docentes=id_docentes,
+                    template=template,
+                    destinatario=destinatario,
+                    periods_filter=periods_filter,
+                    periodo_actual=periodo_actual
+                )
+
+                if results['success_count'] > 0:
+                    messages.success(
+                        request,
+                        f'✅ Se generaron {results["success_count"]} certificados exitosamente.'
+                    )
+
+                if results['error_count'] > 0:
+                    messages.warning(
+                        request,
+                        f'⚠️ {results["error_count"]} certificados no pudieron ser generados.'
+                    )
+
+                    # Show first 5 errors
+                    for error in results['errors'][:5]:
+                        messages.error(request, f"Error en {error['id_docente']}: {error['error']}")
+
+            return redirect('admin:certificates_generatedcertificate_changelist')
+
+        # GET request - show form
+        context = {
+            'title': '🎓 Generador de Certificados',
+            'opts': self.model._meta,
+            'templates': CertificateTemplate.objects.filter(is_active=True),
+            'professors': CoursesHistory.objects.values('id_docente', 'profesor').distinct().order_by('profesor')[:200]
+        }
+        return TemplateResponse(request, 'admin/certificates/quick_generate_form.html', context)
+
+    def generate_period_range(self, start_period, end_period):
+        """Generate a list of periods between start and end"""
+        periods = []
+
+        try:
+            start_year = int(start_period[:4])
+            start_code = int(start_period[4:])
+            end_year = int(end_period[:4])
+            end_code = int(end_period[4:])
+
+            current_year = start_year
+            current_code = start_code
+
+            while (current_year < end_year) or (current_year == end_year and current_code <= end_code):
+                periods.append(f"{current_year:04d}{current_code:02d}")
+
+                # Move to next period
+                if current_code == 25:  # Spring -> Inter
+                    current_code = 30
+                elif current_code == 30:  # Inter -> Fall
+                    current_code = 35
+                elif current_code == 35:  # Fall -> Spring next year
+                    current_code = 25
+                    current_year += 1
+                else:
+                    # Handle unexpected codes
+                    break
+
+                # Safety limit
+                if len(periods) > 50:
+                    break
+
+        except (ValueError, IndexError):
+            pass
+
+        return periods
+
+    def generate_single_certificate(self, id_docente, template, destinatario, periods_filter, periodo_actual):
+        """Generate a single certificate"""
+        try:
+            # Verify courses exist
+            courses = CoursesHistory.objects.filter(id_docente=id_docente)
+
+            if not courses.exists():
+                return {
+                    'success': False,
+                    'message': f'No se encontraron cursos para el ID docente: {id_docente}'
+                }
+
+            professor_name = courses.first().profesor
+
+            # Apply period filters if specified
+            if periods_filter:
+                filtered_courses = courses.filter(periodo__in=periods_filter)
+                if filtered_courses.exists():
                     courses = filtered_courses
+                else:
+                    return {
+                        'success': False,
+                        'message': f'No se encontraron cursos en los períodos especificados para {professor_name}'
+                    }
 
-                # Get template
-                template = self.get_template_for_generation(template_id)
-                if not template:
-                    messages.error(request, 'No hay plantillas de certificado disponibles.')
-                    return redirect('admin:certificates_generatedcertificate_changelist')
+            # Generate certificate
+            options = {
+                'id_docente': id_docente,
+                'destinatario': destinatario,
+                'incluir_qr': True,
+                'periodos_filtro': periods_filter,
+                'periodo_actual': periodo_actual if periodo_actual else None,
+                'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
+            }
+
+            pdf_content, verification_code = CertificateService.generate_pdf(
+                id_docente=id_docente,
+                courses=courses,
+                template=template,
+                options=options
+            )
+
+            # Save certificate
+            certificate = GeneratedCertificate.objects.create(
+                template=template,
+                verification_code=verification_code,
+                metadata={**options, 'professor_name': professor_name}
+            )
+
+            filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
+            certificate.file.save(filename, pdf_content)
+
+            return {
+                'success': True,
+                'message': f'✅ Certificado generado exitosamente para {professor_name}',
+                'certificate_id': certificate.id
+            }
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Error generando certificado: {str(e)}'
+            }
+
+    def generate_bulk_certificates(self, id_docentes, template, destinatario, periods_filter, periodo_actual):
+        """Generate multiple certificates"""
+        results = {
+            'success_count': 0,
+            'error_count': 0,
+            'certificates': [],
+            'errors': []
+        }
+
+        for id_docente in id_docentes:
+            try:
+                # Get professor info
+                courses = CoursesHistory.objects.filter(id_docente=id_docente)
+
+                if not courses.exists():
+                    results['errors'].append({
+                        'id_docente': id_docente,
+                        'error': 'No se encontraron cursos'
+                    })
+                    results['error_count'] += 1
+                    continue
 
                 professor_name = courses.first().profesor
+
+                # Apply period filters if specified
+                if periods_filter:
+                    filtered_courses = courses.filter(periodo__in=periods_filter)
+                    if filtered_courses.exists():
+                        courses = filtered_courses
+                    else:
+                        results['errors'].append({
+                            'id_docente': id_docente,
+                            'professor_name': professor_name,
+                            'error': 'No hay cursos en los períodos especificados'
+                        })
+                        results['error_count'] += 1
+                        continue
 
                 # Generate certificate
                 options = {
                     'id_docente': id_docente,
                     'destinatario': destinatario,
-                    'periodo_especifico': periodo_especifico,
                     'incluir_qr': True,
+                    'periodos_filtro': periods_filter,
+                    'periodo_actual': periodo_actual if periodo_actual else None,
                     'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
                 }
 
-                from .services import CertificateService
                 pdf_content, verification_code = CertificateService.generate_pdf(
                     id_docente=id_docente,
                     courses=courses,
@@ -505,130 +624,25 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
                 filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
                 certificate.file.save(filename, pdf_content)
 
-                period_info = f" para el período {CertificateService.formatear_periodo(periodo_especifico)}" if periodo_especifico else ""
-                messages.success(request, f'✅ Certificado generado exitosamente para {professor_name}{period_info}')
-                return redirect('admin:certificates_generatedcertificate_changelist')
+                results['certificates'].append({
+                    'id': certificate.id,
+                    'id_docente': id_docente,
+                    'professor_name': professor_name,
+                    'verification_code': verification_code
+                })
+                results['success_count'] += 1
 
             except Exception as e:
-                messages.error(request, f'❌ Error generando certificado: {str(e)}')
-                return redirect('admin:certificates_generatedcertificate_changelist')
+                results['errors'].append({
+                    'id_docente': id_docente,
+                    'error': str(e)
+                })
+                results['error_count'] += 1
 
-        # GET request - show enhanced form
-        context = {
-            'title': '⚡ Generar Certificado Rápido',
-            'opts': self.model._meta,
-            'templates': CertificateTemplate.objects.filter(is_active=True),
-            'professors': CoursesHistory.objects.values('id_docente', 'profesor').distinct().order_by('profesor')[:100],
-            'available_periods': CoursesHistory.objects.values_list('periodo', flat=True).distinct().order_by(
-                '-periodo')
-        }
-        return TemplateResponse(request, 'admin/certificates/generate_form.html', context)
-
-    def bulk_generate_view(self, request):
-        """Bulk certificate generation interface"""
-        if request.method == 'POST':
-            template_id = request.POST.get('template_id')
-            periodo_filtro = request.POST.get('periodo_filtro')
-            destinatario = request.POST.get('destinatario', 'A QUIEN CORRESPONDA')
-
-            # Get professors based on criteria
-            professors_query = CoursesHistory.objects.values('id_docente', 'profesor').distinct()
-            if periodo_filtro:
-                professors_query = professors_query.filter(periodo=periodo_filtro)
-
-            generated_count = 0
-            error_count = 0
-
-            # Get template
-            template = self.get_template_for_generation(template_id)
-            if not template:
-                messages.error(request, 'No hay plantillas de certificado disponibles.')
-                return redirect('admin:certificates_generatedcertificate_changelist')
-
-            for prof_data in professors_query:
-                try:
-                    id_docente = prof_data['id_docente']
-                    courses = CoursesHistory.objects.filter(id_docente=id_docente)
-
-                    if periodo_filtro:
-                        courses = courses.filter(periodo=periodo_filtro)
-
-                    if courses.exists():
-                        options = {
-                            'id_docente': id_docente,
-                            'destinatario': destinatario,
-                            'periodo_especifico': periodo_filtro,
-                            'incluir_qr': True,
-                            'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
-                        }
-
-                        from .services import CertificateService
-                        pdf_content, verification_code = CertificateService.generate_pdf(
-                            id_docente=id_docente,
-                            courses=courses,
-                            template=template,
-                            options=options
-                        )
-
-                        certificate = GeneratedCertificate.objects.create(
-                            template=template,
-                            verification_code=verification_code,
-                            metadata={**options, 'professor_name': prof_data['profesor']}
-                        )
-
-                        filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
-                        certificate.file.save(filename, pdf_content)
-                        generated_count += 1
-
-                except Exception as e:
-                    error_count += 1
-                    logger.error(f"Error generating certificate for {prof_data['id_docente']}: {e}")
-
-            messages.success(request,
-                             f'Generación masiva completada: {generated_count} certificados generados, {error_count} errores')
-            return redirect('admin:certificates_generatedcertificate_changelist')
-
-        context = {
-            'title': '📦 Generación Masiva de Certificados',
-            'opts': self.model._meta,
-            'templates': CertificateTemplate.objects.filter(is_active=True),
-            'available_periods': CoursesHistory.objects.values_list('periodo', flat=True).distinct().order_by(
-                '-periodo')
-        }
-        return TemplateResponse(request, 'admin/certificates/bulk_generate_form.html', context)
-
-    def get_template_for_generation(self, template_id):
-        """Helper method to get template"""
-        if template_id:
-            try:
-                return CertificateTemplate.objects.get(id=template_id)
-            except CertificateTemplate.DoesNotExist:
-                return None
-        else:
-            template = CertificateTemplate.objects.filter(is_default=True).first()
-            if not template:
-                template = CertificateTemplate.objects.first()
-            return template
-
-    def get_period_info(self, obj):
-        """Display period information from metadata"""
-        periodo = obj.metadata.get('periodo_especifico')
-        if periodo:
-            from .services import CertificateService
-            return CertificateService.formatear_periodo(periodo)
-
-        periodos = obj.metadata.get('periodos_incluidos', [])
-        if periodos:
-            if len(periodos) == 1:
-                from .services import CertificateService
-                return CertificateService.formatear_periodo(periodos[0])
-            else:
-                return f"{len(periodos)} períodos"
-        return "Todos los períodos"
-
-    get_period_info.short_description = "Período(s)"
+        return results
 
     def get_professor_name(self, obj):
+        """Get professor name from metadata or user profile"""
         if obj.professor:
             return obj.professor.get_full_name()
         return obj.metadata.get('professor_name', 'Unknown')
@@ -636,16 +650,19 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
     get_professor_name.short_description = "Profesor"
 
     def get_id_docente(self, obj):
+        """Get professor ID from metadata"""
         return obj.metadata.get('id_docente', 'N/A')
 
     get_id_docente.short_description = "ID Docente"
 
     def verification_code_short(self, obj):
+        """Display shortened verification code"""
         return f"{obj.verification_code[:8]}..."
 
     verification_code_short.short_description = "Código (abrev.)"
 
     def download_link(self, obj):
+        """Generate download link for certificate"""
         if obj.file:
             return format_html(
                 '<a href="{}" target="_blank" class="button">📥 Descargar</a>',
@@ -656,6 +673,7 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
     download_link.short_description = "Archivo"
 
     def metadata_display(self, obj):
+        """Display formatted metadata"""
         return format_html(
             '<pre>{}</pre>',
             json.dumps(obj.metadata, indent=2, ensure_ascii=False)
@@ -677,7 +695,6 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
                     continue
 
                 options = certificate.metadata.copy()
-                from .services import CertificateService
                 pdf_content, verification_code = CertificateService.generate_pdf(
                     id_docente=id_docente,
                     courses=courses,
@@ -700,3 +717,9 @@ class GeneratedCertificateAdmin(admin.ModelAdmin):
         self.message_user(request, f"Se regeneraron {regenerated_count} certificados exitosamente.")
 
     regenerate_certificates.short_description = "Regenerar certificados seleccionados"
+
+
+@admin.register(TemplatePreview)
+class TemplatePreviewAdmin(admin.ModelAdmin):
+    list_display = ('template', 'generated_at')
+    readonly_fields = ('generated_at',)

@@ -375,6 +375,187 @@ class CertificateViewSet(viewsets.ModelViewSet):
                 'error': f'Error generando certificado: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+    # Update in certificates/views.py - replace or add to the generate action
+
+    @action(detail=False, methods=['post'])
+    def generate_enhanced(self, request):
+        """Enhanced certificate generation with single/bulk modes and period filtering"""
+        from .serializers import EnhancedGenerateCertificateSerializer
+
+        serializer = EnhancedGenerateCertificateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        generation_mode = data.get('generation_mode', 'single')
+
+        # Get template
+        template_id = data.get('template_id')
+        if template_id:
+            try:
+                template = CertificateTemplate.objects.get(id=template_id)
+            except CertificateTemplate.DoesNotExist:
+                return Response({
+                    'error': f'Template con ID {template_id} no encontrado'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            template = CertificateTemplate.objects.filter(is_default=True).first()
+            if not template:
+                template = CertificateTemplate.objects.first()
+            if not template:
+                return Response({
+                    'error': 'No hay plantillas de certificado disponibles'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+        # Common options
+        common_options = {
+            'destinatario': data.get('destinatario', 'A QUIEN CORRESPONDA'),
+            'incluir_qr': data.get('incluir_qr', True),
+            'periodos_filtro': data.get('periodos_filtro'),
+            'periodo_actual': data.get('periodo_actual'),
+            'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
+        }
+
+        if generation_mode == 'single':
+            # Single certificate generation
+            id_docente = data.get('id_docente')
+
+            try:
+                # Get courses for this professor
+                courses = CoursesHistory.objects.filter(id_docente=id_docente)
+
+                # Apply period filter if specified
+                if common_options['periodos_filtro']:
+                    filtered_courses = courses.filter(periodo__in=common_options['periodos_filtro'])
+                    if filtered_courses.exists():
+                        courses = filtered_courses
+                    else:
+                        return Response({
+                            'error': f'No se encontraron cursos en los períodos especificados para el ID docente {id_docente}'
+                        }, status=status.HTTP_404_NOT_FOUND)
+
+                professor_name = courses.first().profesor
+
+                # Add id_docente to options
+                options = dict(common_options)
+                options['id_docente'] = id_docente
+
+                # Generate PDF
+                pdf_content, verification_code = CertificateService.generate_pdf(
+                    id_docente=id_docente,
+                    courses=courses,
+                    template=template,
+                    options=options
+                )
+
+                # Save certificate record
+                certificate = GeneratedCertificate.objects.create(
+                    professor=None,
+                    template=template,
+                    verification_code=verification_code,
+                    metadata={
+                        **options,
+                        'professor_name': professor_name
+                    }
+                )
+
+                # Save PDF file
+                filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
+                certificate.file.save(filename, pdf_content)
+
+                return Response({
+                    'id': certificate.id,
+                    'verification_code': verification_code,
+                    'professor_name': professor_name,
+                    'id_docente': id_docente,
+                    'template_name': template.name,
+                    'file_url': certificate.file.url if certificate.file else None,
+                    'generated_at': certificate.generated_at,
+                    'message': f'Certificado generado exitosamente para {professor_name}',
+                    'periods_included': common_options['periodos_filtro'] if common_options[
+                        'periodos_filtro'] else 'all'
+                }, status=status.HTTP_201_CREATED)
+
+            except Exception as e:
+                return Response({
+                    'error': f'Error generando certificado: {str(e)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        else:  # bulk mode
+            id_docentes = data.get('id_docentes', [])
+
+            generated_certificates = []
+            errors = []
+
+            for id_docente in id_docentes:
+                try:
+                    # Get courses for this professor
+                    courses = CoursesHistory.objects.filter(id_docente=id_docente)
+
+                    # Apply period filter if specified
+                    if common_options['periodos_filtro']:
+                        filtered_courses = courses.filter(periodo__in=common_options['periodos_filtro'])
+                        if filtered_courses.exists():
+                            courses = filtered_courses
+                        else:
+                            errors.append({
+                                'id_docente': id_docente,
+                                'error': 'No se encontraron cursos en los períodos especificados'
+                            })
+                            continue
+
+                    professor_name = courses.first().profesor
+
+                    # Add id_docente to options
+                    current_options = dict(common_options)
+                    current_options['id_docente'] = id_docente
+
+                    # Generate PDF
+                    pdf_content, verification_code = CertificateService.generate_pdf(
+                        id_docente=id_docente,
+                        courses=courses,
+                        template=template,
+                        options=current_options
+                    )
+
+                    # Save certificate record
+                    certificate = GeneratedCertificate.objects.create(
+                        professor=None,
+                        template=template,
+                        verification_code=verification_code,
+                        metadata={
+                            **current_options,
+                            'professor_name': professor_name
+                        }
+                    )
+
+                    # Save PDF file
+                    filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
+                    certificate.file.save(filename, pdf_content)
+
+                    generated_certificates.append({
+                        'id': certificate.id,
+                        'id_docente': id_docente,
+                        'professor_name': professor_name,
+                        'verification_code': verification_code,
+                        'file_url': certificate.file.url if certificate.file else None
+                    })
+
+                except Exception as e:
+                    errors.append({
+                        'id_docente': id_docente,
+                        'error': str(e)
+                    })
+
+            return Response({
+                'generated': len(generated_certificates),
+                'errors': len(errors),
+                'certificates': generated_certificates,
+                'error_details': errors,
+                'periods_included': common_options['periodos_filtro'] if common_options['periodos_filtro'] else 'all',
+                'message': f'Proceso completado: {len(generated_certificates)} certificados generados, {len(errors)} errores'
+            }, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['post'])
     def quick_generate(self, request):
         """Super quick certificate generation with minimal data"""

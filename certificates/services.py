@@ -17,6 +17,18 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from .models import GeneratedCertificate, CoursesHistory
 
+try:
+    from PyPDF2 import PdfReader, PdfWriter
+
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PYPDF2_AVAILABLE = False
+    print("PyPDF2 not installed. Template-based certificates will not work.")
+
+import qrcode
+from PIL import Image as PILImage
+from io import BytesIO
+
 
 class QRCodeFlowable(Flowable):
     """Flowable para insertar un código QR en el PDF"""
@@ -34,18 +46,20 @@ class QRCodeFlowable(Flowable):
 
 
 class CertificateService:
+    TEMPLATE_POSITIONS = {
+        'default': {
+            'recipient': {'x': 72, 'y_from_top': 200, 'font': 'Helvetica-Bold', 'size': 12},
+            'professor_name': {'x': 'center', 'y_from_top': 280, 'font': 'Helvetica-Bold', 'size': 14},
+            'course_table': {'x': 72, 'y_from_top': 350, 'max_width': 468, 'max_height': 250},
+            'date': {'x': 400, 'y_from_bottom': 120, 'font': 'Helvetica', 'size': 11},
+            'signature': {'x': 250, 'y_from_bottom': 150, 'width': 144, 'height': 54},
+            'qr_code': {'x_from_right': 150, 'y_from_bottom': 50, 'size': 108}
+        }
+    }
 
     @classmethod
     def group_courses_by_listas_cruzadas(cls, courses):
-        """
-        Group courses by 'listas_cruzadas' field and format them for multi-line display
 
-        Args:
-            courses: QuerySet of CoursesHistory objects
-
-        Returns:
-            List of dictionaries with grouped course data formatted for table display
-        """
         from collections import defaultdict
 
         # Group courses by listas_cruzadas
@@ -142,18 +156,6 @@ class CertificateService:
 
     @classmethod
     def generate_pdf(cls, id_docente, courses, template, options):
-        """
-        Genera un certificado PDF para un profesor con soporte para celdas multi-línea
-
-        Args:
-            id_docente: The professor's ID
-            courses: QuerySet of CoursesHistory objects
-            template: The CertificateTemplate to use
-            options: Dictionary of options for certificate generation
-
-        Returns:
-            Tupla (content_file, verification_code)
-        """
         # Obtener datos del profesor de los cursos
         profesor_data = courses.first()
         if not profesor_data:
@@ -503,118 +505,3 @@ class CertificateService:
         buffer.close()
 
         return pdf_content, verification_code
-
-    # Add this method to your CertificateService class in services.py
-
-    @classmethod
-    def calculate_optimal_column_widths(cls, grouped_courses, campos, available_width):
-        """
-        Calculate optimal column widths based on content length and importance
-        """
-        # Base widths for different field types
-        base_widths = {
-            'periodo': 0.8,
-            'materia': 2.0,  # Most important, gets more space
-            'clave': 0.7,
-            'nrc': 0.6,
-            'fecha_inicio': 0.8,
-            'fecha_fin': 0.8,
-            'hr_cont': 0.7
-        }
-
-        # Calculate content-based adjustments
-        content_factors = {}
-        for campo in campos:
-            max_content_length = 0
-
-            for course_data in grouped_courses:
-                if campo == 'materia' and course_data['is_grouped']:
-                    # For grouped courses, consider the longest materia name
-                    if isinstance(course_data['materia'], list):
-                        max_length = max(len(str(mat)) for mat in course_data['materia'])
-                        max_content_length = max(max_content_length, max_length)
-                    else:
-                        max_content_length = max(max_content_length, len(str(course_data['materia'])))
-                elif campo in course_data:
-                    content = course_data[campo]
-                    if isinstance(content, list):
-                        max_length = max(len(str(item)) for item in content)
-                        max_content_length = max(max_content_length, max_length)
-                    else:
-                        max_content_length = max(max_content_length, len(str(content)))
-
-            # Calculate factor based on content length (longer content needs more space)
-            if campo == 'materia':
-                # Materia gets special treatment - more responsive to content
-                content_factors[campo] = max(1.0, max_content_length / 30)
-            else:
-                content_factors[campo] = max(0.8, min(1.5, max_content_length / 20))
-
-        # Calculate proportional widths
-        total_base_width = sum(base_widths.get(campo, 1.0) * content_factors.get(campo, 1.0)
-                               for campo in campos)
-
-        calculated_widths = []
-        for campo in campos:
-            base_width = base_widths.get(campo, 1.0)
-            factor = content_factors.get(campo, 1.0)
-            proportional_width = (base_width * factor / total_base_width) * available_width
-            calculated_widths.append(proportional_width)
-
-        return calculated_widths
-
-    @classmethod
-    def create_adaptive_table_style(cls, datos_tabla, grouped_courses):
-        """
-        Create table style that adapts row heights based on content
-        """
-        # Base style
-        style_commands = [
-            # Header styling
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-
-            # Content styling
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-
-            # Base padding
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ]
-
-        # Adaptive row heights and padding based on content
-        for i, course_data in enumerate(grouped_courses):
-            row_index = i + 1  # +1 because row 0 is header
-
-            if course_data['is_grouped']:
-                # Calculate needed height based on number of grouped items
-                course_count = course_data['course_count']
-
-                if course_count <= 2:
-                    padding = 12
-                elif course_count <= 4:
-                    padding = 16
-                else:
-                    padding = 20
-
-                style_commands.extend([
-                    ('TOPPADDING', (0, row_index), (-1, row_index), padding),
-                    ('BOTTOMPADDING', (0, row_index), (-1, row_index), padding),
-                    ('BACKGROUND', (0, row_index), (-1, row_index), colors.Color(0.95, 0.98, 1.0)),
-                ])
-            else:
-                # Normal row padding
-                style_commands.extend([
-                    ('TOPPADDING', (0, row_index), (-1, row_index), 8),
-                    ('BOTTOMPADDING', (0, row_index), (-1, row_index), 8),
-                ])
-
-        return TableStyle(style_commands)
-
