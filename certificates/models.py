@@ -75,14 +75,21 @@ class CertificateTemplate(models.Model):
         ]
     )
 
-    # Table Configuration
+        # Table Configuration
     include_course_table = models.BooleanField(default=True)
     table_fields = models.JSONField(
         default=list,
         help_text="Campos a incluir en la tabla de cursos",
         blank=True
     )
-
+    
+    # Configurable Certificate Fields
+    certificate_fields = models.JSONField(
+        default=list,
+        help_text="Campos a incluir en el certificado (seleccionables)",
+        blank=True
+    )
+ 
     # QR and Verification
     include_qr_by_default = models.BooleanField(default=True)
     verification_text = models.CharField(
@@ -129,6 +136,41 @@ class CertificateTemplate(models.Model):
             'secretary_name', 'secretary_title', 'current_date',
             'recipient', 'course_table'
         ]
+
+    def get_available_certificate_fields(self):
+        """Return comprehensive list of all available fields for certificates"""
+        try:
+            from .field_config import CERTIFICATE_FIELD_CONFIG
+            return CERTIFICATE_FIELD_CONFIG
+        except ImportError:
+            return {}
+
+    def get_default_certificate_fields(self):
+        """Return default field configuration for new templates"""
+        try:
+            from .field_config import DEFAULT_CERTIFICATE_FIELDS
+            return DEFAULT_CERTIFICATE_FIELDS
+        except ImportError:
+            return ['periodo', 'materia', 'clave', 'nrc', 'hr_cont']
+
+    def get_selected_fields(self):
+        """Return currently selected fields or defaults if none selected"""
+        if self.certificate_fields:
+            return self.certificate_fields
+        return self.get_default_certificate_fields()
+
+    def validate_certificate_fields(self):
+        """Validate the selected certificate fields"""
+        try:
+            from django.core.exceptions import ValidationError
+            from .field_config import validate_field_selection
+            selected_fields = self.get_selected_fields()
+            is_valid, message = validate_field_selection(selected_fields)
+            if not is_valid:
+                raise ValidationError(message)
+            return True
+        except ImportError:
+            return True
 
 
 class TemplatePreview(models.Model):

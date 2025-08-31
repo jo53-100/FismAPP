@@ -1,8 +1,9 @@
 # certificates/views.py
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import AllowAny
 from django.db import models, transaction
 from django.http import FileResponse
 import pandas as pd
@@ -22,6 +23,252 @@ from .services import CertificateService
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+# Public API endpoints (no authentication required)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def public_request_certificate(request):
+    """Public endpoint to request a certificate without authentication"""
+    serializer = GenerateCertificateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    data = serializer.validated_data
+    id_docente = data.get('id_docente')
+
+    # Get courses for this professor
+    courses = CoursesHistory.objects.filter(id_docente=id_docente)
+    if not courses.exists():
+        return Response({
+            'error': f'No se encontraron cursos para el ID docente: {id_docente}'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    # Get professor name from course history
+    professor_name = courses.first().profesor
+
+    # Get template
+    template_id = data.get('template_id')
+    if template_id:
+        try:
+            template = CertificateTemplate.objects.get(id=template_id)
+        except CertificateTemplate.DoesNotExist:
+            return Response({
+                'error': f'Template con ID {template_id} no encontrado'
+            }, status=status.HTTP_404_NOT_FOUND)
+    else:
+        template = CertificateTemplate.objects.filter(is_default=True).first()
+        if not template:
+            template = CertificateTemplate.objects.first()
+        if not template:
+            return Response({
+                'error': 'No hay plantillas de certificado disponibles'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        # Prepare options for PDF generation
+        options = {
+            'id_docente': id_docente,
+            'destinatario': data.get('destinatario', 'A QUIEN CORRESPONDA'),
+            'periodos_filtro': data.get('periodos_filtro'),
+            'periodo_actual': data.get('periodo_actual'),
+            'incluir_qr': data.get('incluir_qr', True),
+            'campos': ['periodo', 'materia', 'clave', 'nrc', 'fecha_inicio', 'fecha_fin', 'hr_cont']
+        }
+
+        # Generate PDF using the service method
+        pdf_content, verification_code = CertificateService.generate_pdf(
+            id_docente=id_docente,
+            courses=courses,
+            template=template,
+            options=options
+        )
+
+        # Save certificate record (no professor user required)
+        certificate = GeneratedCertificate.objects.create(
+            professor=None,  # No user account required
+            template=template,
+            verification_code=verification_code,
+            metadata={
+                **options,
+                'professor_name': professor_name
+            }
+        )
+
+        # Save PDF file
+        filename = f"certificate_{id_docente}_{verification_code[:8]}.pdf"
+        certificate.file.save(filename, pdf_content)
+
+        # Return certificate info
+        return Response({
+            'success': True,
+            'message': f'Certificado generado exitosamente para {professor_name}',
+            'certificate': {
+                'id': certificate.id,
+                'verification_code': verification_code,
+                'professor_name': professor_name,
+                'id_docente': id_docente,
+                'template_name': template.name,
+                'file_url': certificate.file.url if certificate.file else None,
+                'generated_at': certificate.generated_at.isoformat(),
+                'verification_url': f"/api/certificates/verify-public/?code={verification_code}"
+            }
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Error generating certificate: {str(e)}")
+        return Response({
+            'success': False,
+            'error': f'Error generando certificado: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_verify_certificate(request):
+    """Public endpoint to verify a certificate by verification code"""
+    verification_code = request.GET.get('code')
+    
+    if not verification_code:
+        return Response({
+            'success': False,
+            'error': 'Código de verificación requerido. Use: ?code=VERIFICATION_CODE'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        certificate = GeneratedCertificate.objects.get(verification_code=verification_code)
+        
+        # Get professor name from metadata
+        professor_name = certificate.metadata.get('professor_name', 'Unknown')
+        id_docente = certificate.metadata.get('id_docente', 'Unknown')
+        
+        return Response({
+            'success': True,
+            'valid': True,
+            'message': 'Certificado válido',
+            'certificate': {
+                'id': certificate.id,
+                'verification_code': verification_code,
+                'professor_name': professor_name,
+                'id_docente': id_docente,
+                'template_name': certificate.template.name,
+                'generated_at': certificate.generated_at.isoformat(),
+                'file_url': certificate.file.url if certificate.file else None,
+                'metadata': certificate.metadata
+            }
+        })
+        
+    except GeneratedCertificate.DoesNotExist:
+        return Response({
+            'success': False,
+            'valid': False,
+            'message': 'Certificado no encontrado o código inválido',
+            'verification_code': verification_code
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_professors_list(request):
+    """Public endpoint to get list of available professors"""
+    professors = CoursesHistory.objects.values('id_docente', 'profesor').annotate(
+        course_count=models.Count('id'),
+        latest_period=models.Max('periodo')
+    ).distinct().order_by('profesor')
+
+    professor_list = []
+    for prof in professors:
+        professor_list.append({
+            'id_docente': prof['id_docente'],
+            'name': prof['profesor'],
+            'course_count': prof['course_count'],
+            'latest_period': prof['latest_period']
+        })
+
+    return Response({
+        'success': True,
+        'count': len(professor_list),
+        'professors': professor_list
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_templates_list(request):
+    """Public endpoint to get available certificate templates"""
+    templates = CertificateTemplate.objects.filter(is_active=True).values(
+        'id', 'name', 'description', 'layout_type', 'is_default'
+    )
+    
+    return Response({
+        'success': True,
+        'count': len(templates),
+        'templates': list(templates)
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_api_info(request):
+    """Get API information and documentation"""
+    return Response({
+        'message': 'Certificate API v1.0',
+        'endpoints': {
+            'request_certificate': '/api/certificates/request-public/',
+            'verify_certificate': '/api/certificates/verify-public/',
+            'list_professors': '/api/certificates/professors-public/',
+            'list_templates': '/api/certificates/templates-public/',
+            'available_fields': '/api/certificates/fields-public/',
+            'api_info': '/api/certificates/api-info/'
+        },
+        'description': 'Public API for certificate generation and verification'
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def public_available_fields(request):
+    """Get all available fields that can be included in certificates"""
+    try:
+        from .field_config import get_field_display_info, CERTIFICATE_FIELD_CONFIG
+        
+        # Get field display information
+        display_info = get_field_display_info()
+        
+        # Also provide raw config for developers
+        raw_config = CERTIFICATE_FIELD_CONFIG
+        
+        return Response({
+            'status': 'success',
+            'message': 'Available certificate fields retrieved successfully',
+            'data': {
+                'display_info': display_info,
+                'raw_config': raw_config,
+                'sections': {
+                    'header': 'Encabezado del certificado',
+                    'course_table': 'Tabla de cursos',
+                    'footer': 'Pie de página',
+                    'verification': 'Verificación y QR'
+                }
+            }
+        })
+    except ImportError:
+        # Fallback if field_config doesn't exist
+        return Response({
+            'status': 'success',
+            'message': 'Basic field information',
+            'data': {
+                'basic_fields': [
+                    'periodo', 'materia', 'clave', 'nrc', 
+                    'fecha_inicio', 'fecha_fin', 'hr_cont'
+                ]
+            }
+        })
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'message': f'Error retrieving field information: {str(e)}'
+        }, status=500)
 
 
 class CertificateTemplateViewSet(viewsets.ModelViewSet):

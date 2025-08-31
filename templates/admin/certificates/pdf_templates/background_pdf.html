@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title_text }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+        
+        body {
+            font-family: 'Helvetica', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            color: {{ primary_color }};
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        
+        .recipient {
+            font-size: 14px;
+            color: {{ primary_color }};
+            margin-bottom: 30px;
+            font-weight: bold;
+        }
+        
+        .intro {
+            text-align: justify;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        
+        .professor-name {
+            font-size: 14px;
+            font-weight: bold;
+            color: {{ primary_color }};
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .courses-intro {
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        
+        .courses-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+            font-size: 10px;
+        }
+        
+        .courses-table th {
+            background-color: {{ primary_color }};
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-weight: bold;
+            border: 1px solid #ddd;
+        }
+        
+        .courses-table td {
+            padding: 6px;
+            text-align: center;
+            border: 1px solid #ddd;
+            vertical-align: top;
+        }
+        
+        .courses-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .closing {
+            text-align: justify;
+            margin-bottom: 30px;
+            font-size: 12px;
+        }
+        
+        .signature-section {
+            text-align: center;
+            margin-top: 40px;
+        }
+        
+        .signature-text {
+            font-size: 10px;
+            margin-bottom: 5px;
+        }
+        
+        .signature-name {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .signature-title {
+            font-size: 10px;
+        }
+        
+        .signature-image {
+            max-width: 120px;
+            max-height: 60px;
+            margin: 10px auto;
+            display: block;
+        }
+        
+        .qr-section {
+            text-align: center;
+            margin-top: 30px;
+            padding: 20px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .qr-code {
+            max-width: 100px;
+            max-height: 100px;
+            margin: 10px auto;
+            display: block;
+        }
+        
+        .verification-text {
+            font-size: 9px;
+            color: #666;
+            margin-top: 10px;
+        }
+        
+        .grouped-course {
+            font-size: 9px;
+            line-height: 1.2;
+        }
+        
+        .grouped-course .more {
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">{{ title_text }}</h1>
+        <div class="recipient">{{ recipient_line }}</div>
+    </div>
+    
+    <div class="intro">
+        {{ intro_text|safe }}
+    </div>
+    
+    <div class="professor-name">
+        {{ professor_name }}
+    </div>
+    
+    <div class="courses-intro">
+        {{ courses_intro }}
+    </div>
+    
+    {% if courses %}
+    <table class="courses-table">
+        <thead>
+            <tr>
+                <th>Período</th>
+                <th>Materia</th>
+                <th>Clave</th>
+                <th>NRC</th>
+                <th>Fecha Inicio</th>
+                <th>Fecha Fin</th>
+                <th>Hrs. Cont.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for course in courses %}
+            <tr>
+                <td>{{ course.periodo }}</td>
+                <td class="grouped-course">
+                    {% if course.is_grouped %}
+                        {% for materia in course.materia|slice:":3" %}
+                            {{ materia }}<br>
+                        {% endfor %}
+                        {% if course.course_count > 3 %}
+                            <span class="more">(+{{ course.course_count|add:"-3" }} más)</span>
+                        {% endif %}
+                    {% else %}
+                        {{ course.materia }}
+                    {% endif %}
+                </td>
+                <td class="grouped-course">
+                    {% if course.is_grouped %}
+                        {% for clave in course.clave|slice:":3" %}
+                            {{ clave }}<br>
+                        {% endfor %}
+                        {% if course.course_count > 3 %}
+                            <span class="more">(+{{ course.course_count|add:"-3" }} más)</span>
+                        {% endif %}
+                    {% else %}
+                        {{ course.clave }}
+                    {% endif %}
+                </td>
+                <td class="grouped-course">
+                    {% if course.is_grouped %}
+                        {% for nrc in course.nrc|slice:":3" %}
+                            {{ nrc }}<br>
+                        {% endfor %}
+                        {% if course.course_count > 3 %}
+                            <span class="more">(+{{ course.course_count|add:"-3" }} más)</span>
+                        {% endif %}
+                    {% else %}
+                        {{ course.nrc }}
+                    {% endif %}
+                </td>
+                <td>{{ course.fecha_inicio }}</td>
+                <td>{{ course.fecha_fin }}</td>
+                <td>{{ course.hr_cont }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    
+    <div class="closing">
+        {{ closing_text }}
+    </div>
+    
+    <div class="signature-section">
+        <div class="signature-text">A T E N T A M E N T E</div>
+        <div class="signature-text"><em>{{ university_motto }}</em></div>
+        <div class="signature-text">{{ current_date }}</div>
+        
+        {% if signature_data_url %}
+        <img src="{{ signature_data_url }}" alt="Firma" class="signature-image">
+        {% endif %}
+        
+        <div class="signature-name">{{ secretary_name }}</div>
+        <div class="signature-title">{{ secretary_title }}</div>
+    </div>
+    
+    {% if include_qr and qr_code_data_url %}
+    <div class="qr-section">
+        <img src="{{ qr_code_data_url }}" alt="Código QR" class="qr-code">
+        <div class="verification-text">
+            Verifique la autenticidad de este documento escaneando el código QR
+        </div>
+    </div>
+    {% endif %}
+</body>
+</html>

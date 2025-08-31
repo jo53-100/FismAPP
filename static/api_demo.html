@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API de Certificados FCFM - Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #34495e;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .endpoint {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #3498db;
+        }
+        .method {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .get { background: #27ae60; color: white; }
+        .post { background: #e67e22; color: white; }
+        .url {
+            font-family: monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 8px 12px;
+            border-radius: 3px;
+            display: block;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #bdc3c7;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .response {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { border-left: 4px solid #27ae60; }
+        .error { border-left: 4px solid #e74c3c; }
+        .info { border-left: 4px solid #3498db; }
+        .example {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .example h4 {
+            margin-top: 0;
+            color: #856404;
+        }
+        .code {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 API de Certificados FCFM</h1>
+        <p>Esta página demuestra cómo usar los endpoints públicos de la API de certificados sin necesidad de autenticación.</p>
+    </div>
+
+    <div class="container">
+        <h2>📋 Información de la API</h2>
+        <button onclick="getApiInfo()">Obtener Información de la API</button>
+        <div id="apiInfo" class="response info" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>👥 Lista de Profesores</h2>
+        <p>Obtén la lista de profesores disponibles en el sistema.</p>
+        <button onclick="getProfessors()">Listar Profesores</button>
+        <div id="professorsList" class="response info" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📄 Plantillas Disponibles</h2>
+        <p>Obtén la lista de plantillas de certificado disponibles.</p>
+        <button onclick="getTemplates()">Listar Plantillas</button>
+        <div id="templatesList" class="response info" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📜 Solicitar Certificado</h2>
+        <p>Genera un nuevo certificado para un profesor.</p>
+        
+        <div class="form-group">
+            <label for="idDocente">ID del Docente:</label>
+            <input type="text" id="idDocente" placeholder="Ej: 100224988" value="100224988">
+        </div>
+        
+        <div class="form-group">
+            <label for="destinatario">Destinatario:</label>
+            <input type="text" id="destinatario" placeholder="Ej: A QUIEN CORRESPONDA" value="A QUIEN CORRESPONDA">
+        </div>
+        
+        <div class="form-group">
+            <label for="templateId">ID de Plantilla (opcional):</label>
+            <input type="number" id="templateId" placeholder="Dejar vacío para usar la predeterminada">
+        </div>
+        
+        <div class="form-group">
+            <label for="incluirQR">Incluir Código QR:</label>
+            <select id="incluirQR">
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+            </select>
+        </div>
+        
+        <button onclick="requestCertificate()">Generar Certificado</button>
+        <div id="certificateResponse" class="response info" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔍 Verificar Certificado</h2>
+        <p>Verifica la autenticidad de un certificado usando su código de verificación.</p>
+        
+        <div class="form-group">
+            <label for="verificationCode">Código de Verificación:</label>
+            <input type="text" id="verificationCode" placeholder="Pega aquí el código de verificación">
+        </div>
+        
+        <button onclick="verifyCertificate()">Verificar Certificado</button>
+        <div id="verificationResponse" class="response info" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>📚 Ejemplos de Uso</h2>
+        
+        <div class="example">
+            <h4>1. Solicitar un Certificado (cURL)</h4>
+            <div class="code">curl -X POST http://localhost:8000/api/certificates/request-public/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_docente": "100224988",
+    "destinatario": "A QUIEN CORRESPONDA",
+    "incluir_qr": true
+  }'</div>
+        </div>
+        
+        <div class="example">
+            <h4>2. Verificar un Certificado (cURL)</h4>
+            <div class="code">curl "http://localhost:8000/api/certificates/verify-public/?code=VERIFICATION_CODE"</div>
+        </div>
+        
+        <div class="example">
+            <h4>3. Listar Profesores (cURL)</h4>
+            <div class="code">curl "http://localhost:8000/api/certificates/professors-public/"</div>
+        </div>
+        
+        <div class="example">
+            <h4>4. Listar Plantillas (cURL)</h4>
+            <div class="code">curl "http://localhost:8000/api/certificates/templates-public/"</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/certificates';
+        
+        async function makeRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, error: error.message, status: 0 };
+            }
+        }
+        
+        function showResponse(elementId, response, isSuccess = true) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = `response ${isSuccess ? 'success' : 'error'}`;
+            element.textContent = JSON.stringify(response, null, 2);
+        }
+        
+        async function getApiInfo() {
+            const response = await makeRequest(`${API_BASE}/api-info/`);
+            showResponse('apiInfo', response.data, response.success);
+        }
+        
+        async function getProfessors() {
+            const response = await makeRequest(`${API_BASE}/professors-public/`);
+            showResponse('professorsList', response.data, response.success);
+        }
+        
+        async function getTemplates() {
+            const response = await makeRequest(`${API_BASE}/templates-public/`);
+            showResponse('templatesList', response.data, response.success);
+        }
+        
+        async function requestCertificate() {
+            const idDocente = document.getElementById('idDocente').value;
+            const destinatario = document.getElementById('destinatario').value;
+            const templateId = document.getElementById('templateId').value;
+            const incluirQR = document.getElementById('incluirQR').value === 'true';
+            
+            if (!idDocente) {
+                alert('Por favor ingresa el ID del docente');
+                return;
+            }
+            
+            const data = {
+                id_docente: idDocente,
+                destinatario: destinatario,
+                incluir_qr: incluirQR
+            };
+            
+            if (templateId) {
+                data.template_id = parseInt(templateId);
+            }
+            
+            const response = await makeRequest(`${API_BASE}/request-public/`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            
+            showResponse('certificateResponse', response.data, response.success);
+            
+            // If successful, populate verification code field
+            if (response.success && response.data.certificate) {
+                document.getElementById('verificationCode').value = response.data.certificate.verification_code;
+            }
+        }
+        
+        async function verifyCertificate() {
+            const code = document.getElementById('verificationCode').value;
+            
+            if (!code) {
+                alert('Por favor ingresa el código de verificación');
+                return;
+            }
+            
+            const response = await makeRequest(`${API_BASE}/verify-public/?code=${encodeURIComponent(code)}`);
+            showResponse('verificationResponse', response.data, response.success);
+        }
+        
+        // Auto-populate with example data
+        document.addEventListener('DOMContentLoaded', function() {
+            // You can add any initialization here
+        });
+    </script>
+</body>
+</html>
