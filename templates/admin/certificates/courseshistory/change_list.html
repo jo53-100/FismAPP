@@ -5,7 +5,7 @@
 {% block object-tools-items %}
     {{ block.super }}
     <li>
-        <a href="{% url 'admin:certificates_courseshistory_import' %}" class="addlink">
+        <a href="{% url 'admin:import_course_data' %}" class="addlink">
             📁 Importar Datos de Cursos
         </a>
     </li>
@@ -20,8 +20,8 @@
            Total de registros: <strong>{{ cl.result_count }}</strong>
         </p>
         <div style="margin-top: 10px;">
-            <a href="{% url 'admin:certificates_courseshistory_import' %}" class="button">📁 Importar Datos</a>
-            <a href="{% url 'admin:certificates_generatedcertificate_quick_generate' %}" class="button">⚡ Generar Certificado</a>
+            <a href="{% url 'admin:import_course_data' %}" class="button">📁 Importar Datos</a>
+            <a href="{% url 'admin:quick_generate_certificate' %}" class="button">⚡ Generar Certificado</a>
         </div>
 
         <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">

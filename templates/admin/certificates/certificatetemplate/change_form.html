@@ -1,0 +1,119 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+.field-help {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 10px 0;
+    font-size: 13px;
+}
+
+.field-help h4 {
+    margin: 0 0 10px 0;
+    color: #495057;
+    font-size: 14px;
+}
+
+.field-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.field-item {
+    background: white;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    padding: 8px;
+    font-size: 12px;
+}
+
+.field-name {
+    font-weight: bold;
+    color: #007bff;
+}
+
+.field-label {
+    color: #495057;
+}
+
+.field-required {
+    color: #dc3545;
+    font-size: 11px;
+}
+
+.field-optional {
+    color: #6c757d;
+    font-size: 11px;
+}
+</style>
+{% endblock %}
+
+{% block field_sets %}
+{{ block.super }}
+
+<!-- Custom field configuration help -->
+<div class="field-help">
+    <h4>📋 Certificate Field Configuration Help</h4>
+    <p>
+        Use the <strong>certificate_fields</strong> field above to specify which fields should appear in this certificate template.
+        You can enter field names as a JSON array, for example: <code>["periodo", "materia", "clave", "hr_cont"]</code>
+    </p>
+    
+    <h5>Quick Field Selection:</h5>
+    <div class="field-list">
+        <div class="field-item">
+            <span class="field-name">periodo</span><br>
+            <span class="field-label">Período Académico</span><br>
+            <span class="field-required">[REQUIRED]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">materia</span><br>
+            <span class="field-label">Nombre de la Materia</span><br>
+            <span class="field-required">[REQUIRED]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">clave</span><br>
+            <span class="field-label">Clave de la Materia</span><br>
+            <span class="field-required">[REQUIRED]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">nrc</span><br>
+            <span class="field-label">NRC</span><br>
+            <span class="field-required">[REQUIRED]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">hr_cont</span><br>
+            <span class="field-label">Horas de Contacto</span><br>
+            <span class="field-required">[REQUIRED]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">fecha_inicio</span><br>
+            <span class="field-label">Fecha de Inicio</span><br>
+            <span class="field-optional">[OPTIONAL]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">fecha_fin</span><br>
+            <span class="field-label">Fecha de Fin</span><br>
+            <span class="field-optional">[OPTIONAL]</span>
+        </div>
+        <div class="field-item">
+            <span class="field-name">cred</span><br>
+            <span class="field-label">Créditos</span><br>
+            <span class="field-optional">[OPTIONAL]</span>
+        </div>
+    </div>
+    
+    <p style="margin-top: 15px;">
+        <strong>💡 Tip:</strong> Leave the field empty to use the default configuration, or use the "Show Available Fields" action 
+        in the template list to see all available options.
+    </p>
+</div>
+{% endblock %}
+

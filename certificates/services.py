@@ -293,7 +293,7 @@ class CertificateService:
                 'nrc': ('NRC', 0.9 * inch),  # Increased for multi-line NRCs
                 'fecha_inicio': ('Fecha Inicio', 1 * inch),
                 'fecha_fin': ('Fecha Fin', 1 * inch),
-                'hr_cont': ('Horas Totales', 0.8 * inch)
+                'hr_cont': ('Horas \\ Totales', 0.8 * inch)
             }
 
             for campo in campos:

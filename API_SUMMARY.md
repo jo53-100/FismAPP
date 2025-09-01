@@ -88,3 +88,4 @@ curl "http://localhost:8000/api/certificates/verify-public/?code=VERIFICATION_CO
 4. **Agregar validaciones** adicionales si es necesario
 
 ¡Los endpoints están listos para usar! 🎉
+

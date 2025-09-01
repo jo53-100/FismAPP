@@ -4,11 +4,6 @@
 
 {% block object-tools-items %}
     {{ block.super }}
-    <li>
-        <a href="{% url 'admin:certificates_certificatetemplate_wizard' %}" class="addlink">
-            🧙‍♂️ Asistente de Plantillas
-        </a>
-    </li>
 {% endblock %}
 
 {% block content_title %}
@@ -17,7 +12,6 @@
         <h3 style="margin-top: 0;">🎨 Gestión de Plantillas de Certificados</h3>
         <p><strong>💡 Tip:</strong> Use el asistente para crear plantillas rápidamente con configuraciones predefinidas.</p>
         <div style="margin-top: 10px;">
-            <a href="{% url 'admin:certificates_certificatetemplate_wizard' %}" class="button">🧙‍♂️ Crear con Asistente</a>
             <a href="{% url 'admin:certificates_certificatetemplate_add' %}" class="button">➕ Crear Manual</a>
         </div>
         <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #ddd;">

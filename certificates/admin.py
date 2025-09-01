@@ -13,42 +13,15 @@ import json
 
 from .models import CertificateTemplate, GeneratedCertificate, CoursesHistory, TemplatePreview
 from .services import CertificateService
-from .field_config import get_field_display_info, DEFAULT_CERTIFICATE_FIELDS
 
 logger = logging.getLogger(__name__)
 
 
-from django import forms
-
-class CertificateTemplateForm(forms.ModelForm):
-    """Custom form for CertificateTemplate with field selection help"""
-    
-    class Meta:
-        model = CertificateTemplate
-        fields = '__all__'
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance.pk:
-            # Add help text for existing templates
-            self.fields['certificate_fields'].help_text = (
-                "Select fields to include in this certificate template. "
-                "Leave empty to use default fields. "
-                f"Available fields: {', '.join(DEFAULT_CERTIFICATE_FIELDS)}"
-            )
-        else:
-            # For new templates, set default fields
-            self.fields['certificate_fields'].help_text = (
-                "Select fields to include in this certificate template. "
-                f"Default fields: {', '.join(DEFAULT_CERTIFICATE_FIELDS)}"
-            )
-
 @admin.register(CertificateTemplate)
 class CertificateTemplateAdmin(admin.ModelAdmin):
-    form = CertificateTemplateForm
     list_display = ('id', 'name', 'layout_type', 'is_default', 'is_active', 'test_certificate', 'created_at')
     list_filter = ('layout_type', 'is_default', 'is_active', 'created_at')
-    search_fields = ('name', 'description', 'department_name', 'certificate_fields')
+    search_fields = ('name', 'description', 'department_name')
     readonly_fields = ('id', 'created_at', 'updated_at')
     fieldsets = (
         ('Basic Information', {
@@ -70,8 +43,7 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
             'fields': ('primary_color', 'secondary_color', 'font_family')
         }),
         ('Table Configuration', {
-            'fields': ('include_course_table', 'table_fields', 'certificate_fields'),
-            'description': 'Configure which fields to include in the certificate table. Use the field names from the field configuration system.'
+            'fields': ('include_course_table', 'certificate_fields')
         }),
         ('QR and Verification', {
             'fields': ('include_qr_by_default', 'verification_text')
@@ -84,7 +56,7 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         })
     )
-    actions = ['make_default', 'show_available_fields']
+    actions = ['make_default']
 
     def test_certificate(self, obj):
         if obj.id:
@@ -108,28 +80,6 @@ class CertificateTemplateAdmin(admin.ModelAdmin):
         self.message_user(request, f"'{template.name}' ahora es el template por defecto.")
 
     make_default.short_description = "Hacer template por defecto"
-
-    def show_available_fields(self, request, queryset):
-        """Show available certificate fields in admin messages"""
-        try:
-            from .field_config import get_field_display_info
-            
-            display_info = get_field_display_info()
-            message_parts = ["Available Certificate Fields:"]
-            
-            for section_name, fields in display_info.items():
-                message_parts.append(f"\n{section_name}:")
-                for field in fields:
-                    required_mark = "[REQUIRED]" if field['required'] else "[OPTIONAL]"
-                    message_parts.append(f"  • {field['name']} - {field['label']} {required_mark}")
-            
-            full_message = "\n".join(message_parts)
-            self.message_user(request, full_message, level=messages.INFO)
-            
-        except ImportError:
-            self.message_user(request, "Field configuration not available", level=messages.WARNING)
-    
-    show_available_fields.short_description = "Show Available Fields"
 
     def get_urls(self):
         urls = super().get_urls()

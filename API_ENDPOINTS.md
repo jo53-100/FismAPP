@@ -302,3 +302,4 @@ Si tienes problemas con la API:
 2. Revisa los logs del servidor Django
 3. Asegúrate de que los datos enviados sean válidos
 4. Verifica que el profesor exista en el sistema
+

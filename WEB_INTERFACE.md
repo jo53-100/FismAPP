@@ -141,3 +141,4 @@ http://localhost:8000/certificates/verify/
 5. **Agregar estadísticas** de uso
 
 ¡La interfaz está lista para usar! 🎉
+
